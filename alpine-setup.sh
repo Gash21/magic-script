@@ -261,20 +261,19 @@ echo "* hard core 0" >> /etc/security/limits.conf
 echo "* soft core 0" >> /etc/security/limits.conf
 
 # Enable randomize_va_space (ASLR)
-echo 2 > /proc/sys/kernel/randomize_va_space
-echo "kernel.randomize_va_space = 2" >> /etc/sysctl.conf
+echo "kernel.randomize_va_space = 2" >> /etc/sysctl.conf 2>/dev/null || true
 
 # Disable source routing
-echo "net.ipv4.conf.all.accept_source_route = 0" >> /etc/sysctl.conf
-echo "net.ipv6.conf.all.accept_source_route = 0" >> /etc/sysctl.conf
+echo "net.ipv4.conf.all.accept_source_route = 0" >> /etc/sysctl.conf 2>/dev/null || true
+echo "net.ipv6.conf.all.accept_source_route = 0" >> /etc/sysctl.conf 2>/dev/null || true
 
 # Disable ICMP redirects
-echo "net.ipv4.conf.all.accept_redirects = 0" >> /etc/sysctl.conf
-echo "net.ipv6.conf.all.accept_redirects = 0" >> /etc/sysctl.conf
-echo "net.ipv4.conf.all.send_redirects = 0" >> /etc/sysctl.conf
+echo "net.ipv4.conf.all.accept_redirects = 0" >> /etc/sysctl.conf 2>/dev/null || true
+echo "net.ipv6.conf.all.accept_redirects = 0" >> /etc/sysctl.conf 2>/dev/null || true
+echo "net.ipv4.conf.all.send_redirects = 0" >> /etc/sysctl.conf 2>/dev/null || true
 
-# Apply sysctl settings
-sysctl -p
+# Apply sysctl settings (may fail in containers, that's ok)
+sysctl -p 2>/dev/null || log_warn "Some sysctl settings could not be applied (may be normal in containers)"
 
 # ============================================
 # 7. CLEANUP
