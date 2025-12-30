@@ -1,6 +1,6 @@
 #!/bin/sh
 # Alpine OS Initial Setup Script for Proxmox LXC
-# Features: Basic hardening, user creation, sudo setup, Docker + Docker Compose, zsh + Oh-My-Zsh
+# Features: Basic hardening, user creation, sudo setup, SSH key setup, Docker + Docker Compose, zsh + Oh-My-Zsh
 
 set -e
 
@@ -129,7 +129,101 @@ else
 fi
 
 # ============================================
-# 3. SETUP SUDOERS
+# 3. SETUP SSH KEYS
+# ============================================
+
+log_info "Setting up SSH keys..."
+
+# Create .ssh directory
+SSH_DIR="/home/$USERNAME/.ssh"
+mkdir -p "$SSH_DIR"
+chown "$USERNAME:$USERNAME" "$SSH_DIR"
+chmod 700 "$SSH_DIR"
+
+AUTHORIZED_KEYS="$SSH_DIR/authorized_keys"
+
+# Check if authorized_keys already exists
+if [ -f "$AUTHORIZED_KEYS" ]; then
+    log_warn "authorized_keys already exists for $USERNAME"
+    echo ""
+    echo -e "${YELLOW}Current SSH keys:${NC}"
+    cat "$AUTHORIZED_KEYS"
+    echo ""
+
+    # Ask if user wants to add more keys
+    echo -e "${YELLOW}Do you want to add more SSH keys? (y/n)${NC}"
+    read -r ADD_MORE
+
+    if [ "$ADD_MORE" != "y" ] && [ "$ADD_MORE" != "Y" ]; then
+        log_info "Skipping SSH key addition"
+    else
+        while true; do
+            echo ""
+            echo -e "${GREEN}Paste SSH public key (or press Enter to finish):${NC}"
+            read -r SSH_KEY
+
+            if [ -z "$SSH_KEY" ]; then
+                break
+            fi
+
+            # Check if key already exists
+            if grep -qF "$SSH_KEY" "$AUTHORIZED_KEYS" 2>/dev/null; then
+                log_warn "This SSH key already exists. Skipping."
+            else
+                echo "$SSH_KEY" >> "$AUTHORIZED_KEYS"
+                log_info "SSH key added successfully"
+            fi
+        done
+    fi
+else
+    # No existing keys, prompt for new ones
+    echo ""
+    echo -e "${GREEN}=========================================="
+    echo "SSH Key Setup"
+    echo -e "==========================================${NC}"
+    echo ""
+    echo "You can now add SSH public keys for $USERNAME"
+    echo "Paste one key at a time, or press Enter to finish"
+    echo ""
+
+    KEY_COUNT=0
+    while true; do
+        echo -e "${YELLOW}Enter SSH public key #$((KEY_COUNT + 1)) (or press Enter to finish):${NC} "
+        read -r SSH_KEY
+
+        if [ -z "$SSH_KEY" ]; then
+            if [ $KEY_COUNT -eq 0 ]; then
+                log_warn "No SSH keys were added!"
+                echo ""
+                echo -e "${RED}WARNING: You won't be able to SSH into this server without SSH keys!${NC}"
+                echo -e "${YELLOW}You can add keys later by manually editing: $AUTHORIZED_KEYS${NC}"
+            else
+                log_info "SSH key setup completed. $KEY_COUNT key(s) added."
+            fi
+            break
+        fi
+
+        # Basic validation - check if it looks like an SSH key
+        if echo "$SSH_KEY" | grep -qE '^(ssh-rsa|ssh-ed25519|ecdsa-sha2-nistp|ssh-dss) '; then
+            echo "$SSH_KEY" >> "$AUTHORIZED_KEYS"
+            KEY_COUNT=$((KEY_COUNT + 1))
+            log_info "SSH key #$KEY_COUNT added"
+        else
+            log_warn "Invalid SSH key format. Please paste a valid public key."
+            log_warn "Key should start with: ssh-rsa, ssh-ed25519, ecdsa-sha2-nistp*, or ssh-dss"
+        fi
+    done
+fi
+
+# Set proper permissions for authorized_keys
+if [ -f "$AUTHORIZED_KEYS" ]; then
+    chown "$USERNAME:$USERNAME" "$AUTHORIZED_KEYS"
+    chmod 600 "$AUTHORIZED_KEYS"
+    log_info "SSH keys configured for $USERNAME"
+fi
+
+# ============================================
+# 4. SETUP SUDOERS
 # ============================================
 
 log_info "Configuring sudoers..."
@@ -156,7 +250,7 @@ fi
 log_info "Sudoers configured for $USERNAME"
 
 # ============================================
-# 4. INSTALL DOCKER
+# 5. INSTALL DOCKER
 # ============================================
 
 log_info "Installing Docker..."
@@ -182,7 +276,7 @@ docker compose version
 docker-compose --version 2>/dev/null || echo "docker-compose (standalone) not available"
 
 # ============================================
-# 5. INSTALL OH-MY-ZSH
+# 6. INSTALL OH-MY-ZSH
 # ============================================
 
 log_info "Installing Oh-My-Zsh..."
@@ -265,7 +359,7 @@ fi
 log_info "Oh-My-Zsh installed and configured for $USERNAME"
 
 # ============================================
-# 6. ADDITIONAL HARDENING
+# 7. ADDITIONAL HARDENING
 # ============================================
 
 log_info "Applying additional hardening..."
@@ -303,7 +397,7 @@ fi
 sysctl -p 2>/dev/null || log_warn "Some sysctl settings could not be applied (may be normal in containers)"
 
 # ============================================
-# 7. CLEANUP
+# 8. CLEANUP
 # ============================================
 
 log_info "Cleaning up..."
@@ -312,7 +406,7 @@ log_info "Cleaning up..."
 rm -rf /var/cache/apk/*
 
 # ============================================
-# 8. SUMMARY
+# 9. SUMMARY
 # ============================================
 
 echo ""
@@ -323,6 +417,7 @@ echo ""
 log_info "Summary:"
 echo "  - User created: $USERNAME"
 echo "  - User has sudo access (no password)"
+echo "  - SSH keys configured (if added during setup)"
 echo "  - Shell: zsh with Oh-My-Zsh"
 echo "  - Docker & Docker Compose installed and running"
 echo "  - Firewall enabled (UFW)"
@@ -330,9 +425,9 @@ echo "  - Fail2ban enabled"
 echo "  - SSH hardened (root login disabled, password auth disabled)"
 echo ""
 log_warn "IMPORTANT NOTES:"
-log_warn "1. You must setup SSH keys for $USERNAME before logging in"
-log_warn "2. SSH password authentication is disabled"
-log_warn "3. Root login is disabled"
+log_warn "1. SSH password authentication is disabled - use SSH keys only"
+log_warn "2. Root login is disabled"
+log_warn "3. If you didn't add SSH keys, add them manually to: $AUTHORIZED_KEYS"
 log_warn "4. Switch to the new user: su - $USERNAME"
 echo ""
 log_info "To switch to the new user, run:"
@@ -344,4 +439,7 @@ echo ""
 log_info "To verify Docker Compose:"
 echo "  docker compose version"
 echo "  docker-compose --version"
+echo ""
+log_info "To test SSH connection (from another machine):"
+echo "  ssh $USERNAME@$(hostname -I | awk '{print $1}')"
 echo ""
