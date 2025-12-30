@@ -118,6 +118,25 @@ log_info "Username will be: $USERNAME"
 # Check if user already exists
 if id "$USERNAME" &>/dev/null; then
     log_warn "User $USERNAME already exists. Skipping user creation."
+
+    # Set shell to zsh for existing user
+    CURRENT_SHELL=$(getent passwd "$USERNAME" | cut -d: -f7)
+    if [ "$CURRENT_SHELL" != "/bin/zsh" ]; then
+        log_info "Setting default shell to zsh for $USERNAME..."
+        chsh -s /bin/zsh "$USERNAME" 2>/dev/null || \
+            usermod -s /bin/zsh "$USERNAME" 2>/dev/null || \
+            sed -i "s|^[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:$CURRENT_SHELL$|&|" /etc/passwd || true
+
+        # Verify and show current shell
+        NEW_SHELL=$(getent passwd "$USERNAME" | cut -d: -f7)
+        if [ "$NEW_SHELL" = "/bin/zsh" ]; then
+            log_info "Default shell changed to zsh"
+        else
+            log_warn "Could not change shell to zsh manually. You may need to run: chsh -s /bin/zsh $USERNAME"
+        fi
+    else
+        log_info "User $USERNAME already has zsh as default shell"
+    fi
 else
     # Create user with no password
     adduser -D -h "/home/$USERNAME" -s "/bin/zsh" "$USERNAME"
@@ -125,7 +144,7 @@ else
     # Unlock the account (no password required for sudo)
     passwd -u "$USERNAME"
 
-    log_info "User $USERNAME created successfully"
+    log_info "User $USERNAME created successfully with zsh as default shell"
 fi
 
 # ============================================
