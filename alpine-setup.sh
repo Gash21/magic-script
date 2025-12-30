@@ -338,8 +338,36 @@ log_info "Installing Oh-My-Zsh..."
 if [ -d "/home/$USERNAME/.oh-my-zsh" ]; then
     log_warn "Oh-My-Zsh already installed for $USERNAME. Skipping installation."
 else
-    # Install oh-my-zsh for the user
-    su - "$USERNAME" -c 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended'
+    log_info "Downloading Oh-My-Zsh installation script..."
+
+    # Download oh-my-zsh directly (avoiding su permission issues in LXC)
+    cd "/home/$USERNAME" || { log_error "Cannot access home directory"; exit 1; }
+
+    # Download and install oh-my-zsh using a non-interactive method
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh -o install.sh
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh -O install.sh
+    else
+        log_error "Neither curl nor wget is available"
+        cd - >/dev/null || true
+        exit 1
+    fi
+
+    # Run the installer in unattended mode
+    sh install.sh --unattended --keep-zshrc
+
+    # Clean up
+    rm -f install.sh
+
+    # Return to original directory
+    cd - >/dev/null || true
+
+    # Fix ownership (ensure all files belong to the user)
+    chown -R "$USERNAME:$USERNAME" "/home/$USERNAME/.oh-my-zsh"
+    chown "$USERNAME:$USERNAME" "/home/$USERNAME/.zshrc" 2>/dev/null || true
+
+    log_info "Oh-My-Zsh installed successfully"
 fi
 
 # Set up a robust .zshrc with sensible defaults
