@@ -55,25 +55,25 @@ apk add --no-cache \
     vim
 
 # Enable and start SSH server
-rc-update add sshd default
-rc-service sshd start
+rc-update add sshd default 2>/dev/null || true
+rc-service sshd start 2>/dev/null || true
 
 # Enable and start fail2ban
-rc-update add fail2ban default
-rc-service fail2ban start
+rc-update add fail2ban default 2>/dev/null || true
+rc-service fail2ban start 2>/dev/null || true
 
 # Configure UFW (Uncomplicated Firewall)
 log_info "Configuring firewall..."
 
 # Allow SSH and essential services
-ufw default deny incoming
-ufw default allow outgoing
-ufw allow ssh
-ufw allow http
-ufw allow https
+ufw default deny incoming 2>/dev/null || true
+ufw default allow outgoing 2>/dev/null || true
+ufw allow ssh 2>/dev/null || true
+ufw allow http 2>/dev/null || true
+ufw allow https 2>/dev/null || true
 
 # Enable UFW
-ufw enable
+ufw enable 2>/dev/null || true
 
 # Secure SSH configuration
 log_info "Securing SSH configuration..."
@@ -85,8 +85,10 @@ if [ ! -f "$SSH_CONFIG" ]; then
     log_error "SSH config not found at $SSH_CONFIG"
     log_error "Skipping SSH hardening..."
 else
-    # Backup original config
-    cp "$SSH_CONFIG" "${SSH_CONFIG}.bak"
+    # Backup original config (if not already backed up)
+    if [ ! -f "${SSH_CONFIG}.bak" ]; then
+        cp "$SSH_CONFIG" "${SSH_CONFIG}.bak"
+    fi
 
     # Disable root login
     sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' "$SSH_CONFIG"
@@ -98,7 +100,7 @@ else
     sed -i 's/^#*PermitEmptyPasswords.*/PermitEmptyPasswords no/' "$SSH_CONFIG"
 
     # Restart SSH service
-    rc-service sshd restart
+    rc-service sshd restart 2>/dev/null || true
 fi
 
 # ============================================
@@ -136,7 +138,9 @@ log_info "Configuring sudoers..."
 mkdir -p /etc/sudoers.d
 
 # Add user to sudoers with no password requirement
-echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/$USERNAME"
+if [ ! -f "/etc/sudoers.d/$USERNAME" ]; then
+    echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/$USERNAME"
+fi
 
 # Set proper permissions
 chmod 0440 "/etc/sudoers.d/$USERNAME"
@@ -145,7 +149,9 @@ chmod 0440 "/etc/sudoers.d/$USERNAME"
 adduser "$USERNAME" wheel 2>/dev/null || true
 
 # Ensure wheel group can use sudo
-sed -i 's/^# %wheel ALL=(ALL) NOPASSWD: ALL/%wheel ALL=(ALL) NOPASSWD: ALL/' /etc/sudoers
+if ! grep -q "^%wheel ALL=(ALL) NOPASSWD: ALL" /etc/sudoers 2>/dev/null; then
+    sed -i 's/^# %wheel ALL=(ALL) NOPASSWD: ALL/%wheel ALL=(ALL) NOPASSWD: ALL/' /etc/sudoers 2>/dev/null || true
+fi
 
 log_info "Sudoers configured for $USERNAME"
 
@@ -162,11 +168,11 @@ apk add --no-cache \
     docker-compose
 
 # Enable Docker service
-rc-update add docker default
-rc-service docker start
+rc-update add docker default 2>/dev/null || true
+rc-service docker start 2>/dev/null || true
 
 # Add user to docker group
-adduser "$USERNAME" docker
+adduser "$USERNAME" docker 2>/dev/null || true
 
 log_info "Docker installed and started"
 
@@ -181,17 +187,27 @@ docker-compose --version 2>/dev/null || echo "docker-compose (standalone) not av
 
 log_info "Installing Oh-My-Zsh..."
 
-# Install oh-my-zsh for the user
-su - "$USERNAME" -c 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended'
+# Check if oh-my-zsh is already installed
+if [ -d "/home/$USERNAME/.oh-my-zsh" ]; then
+    log_warn "Oh-My-Zsh already installed for $USERNAME. Skipping installation."
+else
+    # Install oh-my-zsh for the user
+    su - "$USERNAME" -c 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended'
+fi
 
 # Set up a robust .zshrc with sensible defaults
 ZSHRC="/home/$USERNAME/.zshrc"
 
-# Backup original .zshrc
-cp "$ZSHRC" "${ZSHRC}.bak"
+# Backup original .zshrc if it exists
+if [ -f "$ZSHRC" ]; then
+    cp "$ZSHRC" "${ZSHRC}.bak"
+fi
 
-# Add useful configurations to .zshrc
-cat >> "$ZSHRC" << 'EOF'
+# Add useful configurations to .zshrc (if not already added)
+if grep -q "# User configuration" "$ZSHRC" 2>/dev/null; then
+    log_warn "Custom zsh configuration already exists. Skipping .zshrc modification."
+else
+    cat >> "$ZSHRC" << 'EOF'
 
 # User configuration
 export EDITOR=vim
@@ -242,8 +258,9 @@ zstyle ':completion:*' menu select
 zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}'
 EOF
 
-# Fix permissions
-chown "$USERNAME:$USERNAME" "$ZSHRC"
+    # Fix permissions
+    chown "$USERNAME:$USERNAME" "$ZSHRC"
+fi
 
 log_info "Oh-My-Zsh installed and configured for $USERNAME"
 
@@ -253,24 +270,34 @@ log_info "Oh-My-Zsh installed and configured for $USERNAME"
 
 log_info "Applying additional hardening..."
 
-# Set secure umask
-echo "umask 027" >> /etc/profile
+# Set secure umask (if not already set)
+if ! grep -q "umask 027" /etc/profile 2>/dev/null; then
+    echo "umask 027" >> /etc/profile
+fi
 
-# Disable core dumps
-echo "* hard core 0" >> /etc/security/limits.conf
-echo "* soft core 0" >> /etc/security/limits.conf
+# Disable core dumps (if not already set)
+if ! grep -q "hard core 0" /etc/security/limits.conf 2>/dev/null; then
+    echo "* hard core 0" >> /etc/security/limits.conf
+    echo "* soft core 0" >> /etc/security/limits.conf
+fi
 
 # Enable randomize_va_space (ASLR)
-echo "kernel.randomize_va_space = 2" >> /etc/sysctl.conf 2>/dev/null || true
+if ! grep -q "randomize_va_space" /etc/sysctl.conf 2>/dev/null; then
+    echo "kernel.randomize_va_space = 2" >> /etc/sysctl.conf 2>/dev/null || true
+fi
 
 # Disable source routing
-echo "net.ipv4.conf.all.accept_source_route = 0" >> /etc/sysctl.conf 2>/dev/null || true
-echo "net.ipv6.conf.all.accept_source_route = 0" >> /etc/sysctl.conf 2>/dev/null || true
+if ! grep -q "accept_source_route = 0" /etc/sysctl.conf 2>/dev/null; then
+    echo "net.ipv4.conf.all.accept_source_route = 0" >> /etc/sysctl.conf 2>/dev/null || true
+    echo "net.ipv6.conf.all.accept_source_route = 0" >> /etc/sysctl.conf 2>/dev/null || true
+fi
 
 # Disable ICMP redirects
-echo "net.ipv4.conf.all.accept_redirects = 0" >> /etc/sysctl.conf 2>/dev/null || true
-echo "net.ipv6.conf.all.accept_redirects = 0" >> /etc/sysctl.conf 2>/dev/null || true
-echo "net.ipv4.conf.all.send_redirects = 0" >> /etc/sysctl.conf 2>/dev/null || true
+if ! grep -q "accept_redirects = 0" /etc/sysctl.conf 2>/dev/null; then
+    echo "net.ipv4.conf.all.accept_redirects = 0" >> /etc/sysctl.conf 2>/dev/null || true
+    echo "net.ipv6.conf.all.accept_redirects = 0" >> /etc/sysctl.conf 2>/dev/null || true
+    echo "net.ipv4.conf.all.send_redirects = 0" >> /etc/sysctl.conf 2>/dev/null || true
+fi
 
 # Apply sysctl settings (may fail in containers, that's ok)
 sysctl -p 2>/dev/null || log_warn "Some sysctl settings could not be applied (may be normal in containers)"
