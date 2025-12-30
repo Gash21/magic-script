@@ -46,12 +46,17 @@ apk add --no-cache \
     curl \
     ca-certificates \
     fail2ban \
+    openssh-server \
     ufw \
     shadow \
     bash \
     zsh \
     git \
     vim
+
+# Enable and start SSH server
+rc-update add sshd default
+rc-service sshd start
 
 # Enable and start fail2ban
 rc-update add fail2ban default
@@ -75,20 +80,26 @@ log_info "Securing SSH configuration..."
 
 SSH_CONFIG="/etc/ssh/sshd_config"
 
-# Backup original config
-cp "$SSH_CONFIG" "${SSH_CONFIG}.bak"
+# Check if SSH config exists
+if [ ! -f "$SSH_CONFIG" ]; then
+    log_error "SSH config not found at $SSH_CONFIG"
+    log_error "Skipping SSH hardening..."
+else
+    # Backup original config
+    cp "$SSH_CONFIG" "${SSH_CONFIG}.bak"
 
-# Disable root login
-sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' "$SSH_CONFIG"
+    # Disable root login
+    sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' "$SSH_CONFIG"
 
-# Disable password authentication (key-based only)
-sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' "$SSH_CONFIG"
+    # Disable password authentication (key-based only)
+    sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' "$SSH_CONFIG"
 
-# Disable empty passwords
-sed -i 's/^#*PermitEmptyPasswords.*/PermitEmptyPasswords no/' "$SSH_CONFIG"
+    # Disable empty passwords
+    sed -i 's/^#*PermitEmptyPasswords.*/PermitEmptyPasswords no/' "$SSH_CONFIG"
 
-# Restart SSH service
-rc-service sshd restart
+    # Restart SSH service
+    rc-service sshd restart
+fi
 
 # ============================================
 # 2. CREATE USER WITH HOSTNAME
