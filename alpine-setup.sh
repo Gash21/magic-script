@@ -141,8 +141,8 @@ else
     # Create user with no password
     adduser -D -h "/home/$USERNAME" -s "/bin/zsh" "$USERNAME"
 
-    # Unlock the account (no password required for sudo)
-    passwd -u "$USERNAME"
+    # Note: Account is created without password (SSH key auth only)
+    # No need to unlock since we're using SSH keys
 
     log_info "User $USERNAME created successfully with zsh as default shell"
 fi
