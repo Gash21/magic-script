@@ -268,6 +268,40 @@ fi
 
 log_info "Sudoers configured for $USERNAME"
 
+# Add convenience alias for root to switch to user
+ROOT_PROFILE="/root/.profile"
+if [ -f "$ROOT_PROFILE" ]; then
+    if ! grep -q "alias to-$USERNAME=" "$ROOT_PROFILE" 2>/dev/null; then
+        echo "" >> "$ROOT_PROFILE"
+        echo "# Quick alias to switch to $USERNAME" >> "$ROOT_PROFILE"
+        echo "alias to-$USERNAME='su - $USERNAME'" >> "$ROOT_PROFILE"
+        log_info "Added alias 'to-$USERNAME' to root's profile"
+    fi
+fi
+
+# Add convenience alias for root to switch to user in .zshrc if it exists
+if [ -f "/root/.zshrc" ]; then
+    if ! grep -q "alias to-$USERNAME=" "/root/.zshrc" 2>/dev/null; then
+        echo "" >> "/root/.zshrc"
+        echo "# Quick alias to switch to $USERNAME" >> "/root/.zshrc"
+        echo "alias to-$USERNAME='su - $USERNAME'" >> "/root/.zshrc"
+        log_info "Added alias 'to-$USERNAME' to root's .zshrc"
+    fi
+fi
+
+# Test sudo configuration
+log_info "Verifying sudo configuration..."
+if sudo -U "$USERNAME" -l >/dev/null 2>&1; then
+    log_info "✓ User $USERNAME has sudo access"
+else
+    # Alternative check if sudo -U doesn't work on Alpine
+    if [ -f "/etc/sudoers.d/$USERNAME" ] && grep -q "$USERNAME.*NOPASSWD.*ALL" "/etc/sudoers.d/$USERNAME"; then
+        log_info "✓ User $USERNAME has sudo access (verified via config)"
+    else
+        log_warn "Could not verify sudo access for $USERNAME"
+    fi
+fi
+
 # ============================================
 # 5. INSTALL DOCKER
 # ============================================
@@ -435,22 +469,28 @@ log_info "=========================================="
 echo ""
 log_info "Summary:"
 echo "  - User created: $USERNAME"
-echo "  - User has sudo access (no password)"
+echo "  - User has full sudo access (NOPASSWD)"
 echo "  - SSH keys configured (if added during setup)"
 echo "  - Shell: zsh with Oh-My-Zsh"
 echo "  - Docker & Docker Compose installed and running"
 echo "  - Firewall enabled (UFW)"
 echo "  - Fail2ban enabled"
 echo "  - SSH hardened (root login disabled, password auth disabled)"
+echo "  - Root alias 'to-$USERNAME' added for quick user switching"
 echo ""
 log_warn "IMPORTANT NOTES:"
 log_warn "1. SSH password authentication is disabled - use SSH keys only"
 log_warn "2. Root login is disabled"
 log_warn "3. If you didn't add SSH keys, add them manually to: $AUTHORIZED_KEYS"
-log_warn "4. Switch to the new user: su - $USERNAME"
+log_warn "4. User $USERNAME has full sudo access (no password required)"
+log_warn "5. From root, use 'to-$USERNAME' or 'su - $USERNAME' to switch to user"
 echo ""
 log_info "To switch to the new user, run:"
 echo "  su - $USERNAME"
+echo "  or use the alias: to-$USERNAME"
+echo ""
+log_info "To verify sudo access:"
+echo "  sudo -u $USERNAME sudo whoami"
 echo ""
 log_info "To verify Docker:"
 echo "  docker run --rm hello-world"
