@@ -460,6 +460,12 @@ alias gc='git commit'
 alias gp='git push'
 alias gl='git log --oneline --graph --decorate'
 
+# Tailscale aliases
+alias ts='tailscale'
+alias tss='tailscale status'
+alias tsup='sudo tailscale up --advertise-routes=192.168.0.0/24 --accept-routes'
+alias tsdown='sudo tailscale down'
+
 # History configuration
 HISTSIZE=10000
 SAVEHIST=10000
