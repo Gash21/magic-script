@@ -119,6 +119,10 @@ log_info "Username will be: $USERNAME"
 if id "$USERNAME" &>/dev/null; then
     log_warn "User $USERNAME already exists. Skipping user creation."
 
+    # Ensure home permissions are correct for existing users too
+    chmod 700 "/home/$USERNAME"
+    chown "$USERNAME:$USERNAME" "/home/$USERNAME"
+
     # Set shell to zsh for existing user
     CURRENT_SHELL=$(getent passwd "$USERNAME" | cut -d: -f7)
     if [ "$CURRENT_SHELL" != "/bin/zsh" ]; then
@@ -141,10 +145,16 @@ else
     # Create user with no password
     adduser -D -h "/home/$USERNAME" -s "/bin/zsh" "$USERNAME"
 
-    # Note: Account is created without password (SSH key auth only)
-    # No need to unlock since we're using SSH keys
+    # CRITICAL FIX: Set home directory permissions to 700 to satisfy SSH StrictModes
+    chmod 700 "/home/$USERNAME"
+    chown "$USERNAME:$USERNAME" "/home/$USERNAME"
 
-    log_info "User $USERNAME created successfully with zsh as default shell"
+    # CRITICAL FIX: Unlock the account by setting a random complex password
+    # (Shadow file "!" lock can prevent SSH login even with keys on some Alpine setups)
+    RANDOM_PASS=$(date +%s%N | sha256sum | base64 | head -c 32)
+    echo "$USERNAME:$RANDOM_PASS" | chpasswd
+
+    log_info "User $USERNAME created successfully (account unlocked with random password)"
 fi
 
 # ============================================
@@ -202,6 +212,7 @@ else
     echo -e "==========================================${NC}"
     echo ""
     echo "You can now add SSH public keys for $USERNAME"
+    echo -e "${YELLOW}IMPORTANT: Paste the entire key on a single line. Avoid extra newlines.${NC}"
     echo "Paste one key at a time, or press Enter to finish"
     echo ""
 
@@ -303,7 +314,39 @@ else
 fi
 
 # ============================================
-# 5. INSTALL DOCKER
+# 5. INSTALL TAILSCALE
+# ============================================
+
+log_info "Installing Tailscale..."
+
+apk add --no-cache tailscale
+
+rc-update add tailscale default 2>/dev/null || true
+rc-service tailscale start 2>/dev/null || true
+
+log_info "Tailscale daemon started"
+
+echo ""
+log_info "=========================================="
+log_info "Tailscale Setup"
+log_info "=========================================="
+echo ""
+echo -e "${YELLOW}Tailscale has been installed but NOT authenticated yet.${NC}"
+echo ""
+echo -e "${GREEN}To connect this server to your Tailscale network as a subnet router:${NC}"
+echo ""
+echo "1. Run this command to authenticate and advertise your local subnet:"
+echo -e "   ${YELLOW}tailscale up --advertise-routes=192.168.0.0/24 --accept-routes${NC}"
+echo ""
+echo "2. Open the URL shown in the output to authenticate via your Tailscale account"
+echo ""
+echo "3. In the Tailscale admin console, approve the subnet routes for this machine"
+echo ""
+echo -e "${GREEN}After setup, your local network (192.168.0.0/24) will be accessible from Tailscale.${NC}"
+echo ""
+
+# ============================================
+# 6. INSTALL DOCKER
 # ============================================
 
 log_info "Installing Docker..."
@@ -329,7 +372,7 @@ docker compose version
 docker-compose --version 2>/dev/null || echo "docker-compose (standalone) not available"
 
 # ============================================
-# 6. INSTALL OH-MY-ZSH
+# 7. INSTALL OH-MY-ZSH
 # ============================================
 
 log_info "Installing Oh-My-Zsh..."
@@ -440,7 +483,7 @@ fi
 log_info "Oh-My-Zsh installed and configured for $USERNAME"
 
 # ============================================
-# 7. ADDITIONAL HARDENING
+# 8. ADDITIONAL HARDENING
 # ============================================
 
 log_info "Applying additional hardening..."
@@ -478,7 +521,7 @@ fi
 sysctl -p 2>/dev/null || log_warn "Some sysctl settings could not be applied (may be normal in containers)"
 
 # ============================================
-# 8. CLEANUP
+# 9. CLEANUP
 # ============================================
 
 log_info "Cleaning up..."
@@ -487,7 +530,7 @@ log_info "Cleaning up..."
 rm -rf /var/cache/apk/*
 
 # ============================================
-# 9. SUMMARY
+# 10. SUMMARY
 # ============================================
 
 echo ""
@@ -500,6 +543,7 @@ echo "  - User created: $USERNAME"
 echo "  - User has full sudo access (NOPASSWD)"
 echo "  - SSH keys configured (if added during setup)"
 echo "  - Shell: zsh with Oh-My-Zsh"
+echo "  - Tailscale installed (requires manual setup)"
 echo "  - Docker & Docker Compose installed and running"
 echo "  - Firewall enabled (UFW)"
 echo "  - Fail2ban enabled"
@@ -512,6 +556,7 @@ log_warn "2. Root login is disabled"
 log_warn "3. If you didn't add SSH keys, add them manually to: $AUTHORIZED_KEYS"
 log_warn "4. User $USERNAME has full sudo access (no password required)"
 log_warn "5. From root, use 'to-$USERNAME' or 'su - $USERNAME' to switch to user"
+log_warn "6. Tailscale is installed but NOT authenticated - see instructions above"
 echo ""
 log_info "To switch to the new user, run:"
 echo "  su - $USERNAME"
@@ -526,6 +571,10 @@ echo ""
 log_info "To verify Docker Compose:"
 echo "  docker compose version"
 echo "  docker-compose --version"
+echo ""
+log_info "To connect Tailscale (subnet router for 192.168.0.0/24):"
+echo "  tailscale up --advertise-routes=192.168.0.0/24 --accept-routes"
+echo "  (Then approve routes in Tailscale admin console)"
 echo ""
 log_info "To test SSH connection (from another machine):"
 echo "  ssh $USERNAME@$(hostname -I | awk '{print $1}')"
