@@ -322,9 +322,22 @@ log_info "Installing Tailscale..."
 apk add --no-cache tailscale
 
 rc-update add tailscale default 2>/dev/null || true
-rc-service tailscale start 2>/dev/null || true
 
-log_info "Tailscale daemon started"
+log_info "Starting Tailscale daemon..."
+rc-service tailscale start
+
+if ! rc-service tailscale status >/dev/null 2>&1; then
+    log_warn "Tailscale service failed to start via OpenRC, starting manually..."
+    tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock >/dev/null 2>&1 &
+    sleep 2
+fi
+
+if [ -S /var/run/tailscale/tailscaled.sock ]; then
+    log_info "✓ Tailscale daemon is running"
+else
+    log_error "✗ Tailscale daemon failed to start"
+    log_warn "You may need to manually start it with: rc-service tailscale start"
+fi
 
 echo ""
 log_info "=========================================="
@@ -563,6 +576,7 @@ log_warn "3. If you didn't add SSH keys, add them manually to: $AUTHORIZED_KEYS"
 log_warn "4. User $USERNAME has full sudo access (no password required)"
 log_warn "5. From root, use 'to-$USERNAME' or 'su - $USERNAME' to switch to user"
 log_warn "6. Tailscale is installed but NOT authenticated - see instructions above"
+log_warn "7. If Tailscale daemon is not running, restart with: rc-service tailscale restart"
 echo ""
 log_info "To switch to the new user, run:"
 echo "  su - $USERNAME"
