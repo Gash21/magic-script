@@ -403,40 +403,75 @@ docker-compose --version 2>/dev/null || printf "docker-compose (standalone) not 
 
 log_info "Installing Oh-My-Zsh..."
 
+# Verify git is available (required for Oh-My-Zsh)
+if ! command -v git >/dev/null 2>&1; then
+    log_error "git is not installed. Installing git first..."
+    apk add --no-cache git
+fi
+
 # Check if oh-my-zsh is already installed
 if [ -d "/home/$USERNAME/.oh-my-zsh" ]; then
     log_warn "Oh-My-Zsh already installed for $USERNAME. Skipping installation."
 else
     log_info "Downloading Oh-My-Zsh installation script..."
 
+    # Save current directory
+    CURRENT_DIR=$(pwd)
+
     # Download oh-my-zsh directly (avoiding su permission issues in LXC)
     cd "/home/$USERNAME" || { log_error "Cannot access home directory"; exit 1; }
 
     # Download and install oh-my-zsh using a non-interactive method
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh -o install.sh
+        if ! curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh -o install.sh; then
+            log_error "Failed to download Oh-My-Zsh installer with curl"
+            cd "$CURRENT_DIR" || exit 1
+            exit 1
+        fi
     elif command -v wget >/dev/null 2>&1; then
-        wget -q https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh -O install.sh
+        if ! wget -q https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh -O install.sh; then
+            log_error "Failed to download Oh-My-Zsh installer with wget"
+            cd "$CURRENT_DIR" || exit 1
+            exit 1
+        fi
     else
         log_error "Neither curl nor wget is available"
-        cd - >/dev/null || true
+        cd "$CURRENT_DIR" || exit 1
+        exit 1
+    fi
+
+    # Verify installer was downloaded
+    if [ ! -f install.sh ]; then
+        log_error "Installer script not found after download"
+        cd "$CURRENT_DIR" || exit 1
         exit 1
     fi
 
     # Run the installer in unattended mode
-    sh install.sh --unattended --keep-zshrc
+    log_info "Running Oh-My-Zsh installer..."
+    if ! sh install.sh --unattended --keep-zshrc; then
+        log_warn "Oh-My-Zsh installer failed, but continuing..."
+    fi
 
     # Clean up
     rm -f install.sh
 
     # Return to original directory
-    cd - >/dev/null || true
+    cd "$CURRENT_DIR" || exit 1
 
-    # Fix ownership (ensure all files belong to the user)
-    chown -R "$USERNAME:$USERNAME" "/home/$USERNAME/.oh-my-zsh"
-    chown "$USERNAME:$USERNAME" "/home/$USERNAME/.zshrc" 2>/dev/null || true
+    # Fix ownership (ensure all files belong to the user) - ONLY if directory exists
+    if [ -d "/home/$USERNAME/.oh-my-zsh" ]; then
+        chown -R "$USERNAME:$USERNAME" "/home/$USERNAME/.oh-my-zsh" 2>/dev/null || true
+        log_info "Oh-My-Zsh installed successfully"
+    else
+        log_warn "Oh-My-Zsh installation may have failed - .oh-my-zsh directory not found"
+        log_warn "You can install it manually later by running as the user: sh -c \"$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)\" \"\" --unattended"
+    fi
 
-    log_info "Oh-My-Zsh installed successfully"
+    # Fix .zshrc ownership if it exists
+    if [ -f "/home/$USERNAME/.zshrc" ]; then
+        chown "$USERNAME:$USERNAME" "/home/$USERNAME/.zshrc" 2>/dev/null || true
+    fi
 fi
 
 # Set up a robust .zshrc with sensible defaults
