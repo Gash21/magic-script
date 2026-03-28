@@ -53,7 +53,8 @@ apk add --no-cache \
     bash \
     zsh \
     git \
-    vim
+    vim \
+    ncurses-terminfo-base
 
 # Enable and start SSH server
 rc-update add sshd default 2>/dev/null || true
@@ -493,8 +494,17 @@ else
 # ============================================
 # Fix backspace, delete, arrow keys, and other terminal issues over SSH
 
-# Ensure proper terminal type
-export TERM=${TERM:-xterm-256color}
+# Smart terminal detection - fall back to known-good terminals
+# This handles terminals like xterm-ghostty, wezterm, etc. that Alpine doesn't have
+if ! infocmp "$TERM" >/dev/null 2>&1; then
+    # Current TERM not available, try common alternatives in order of preference
+    for term in xterm-256color xterm-color xterm vt100; do
+        if infocmp "$term" >/dev/null 2>&1; then
+            export TERM="$term"
+            break
+        fi
+    done
+fi
 
 # Fix terminal key bindings for SSH sessions
 autoload -Uz zsh-line-init
