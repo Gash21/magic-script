@@ -1,6 +1,7 @@
 #!/bin/sh
 # Alpine OS Initial Setup Script for Proxmox LXC
 # Features: Basic hardening, user creation, sudo setup, SSH key setup, Docker + Docker Compose, zsh + Oh-My-Zsh
+# Fully compatible with BusyBox on Alpine Linux
 
 set -e
 
@@ -11,15 +12,15 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 log_info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
+    printf "${GREEN}[INFO]${NC} %s\n" "$1"
 }
 
 log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
+    printf "${YELLOW}[WARN]${NC} %s\n" "$1"
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    printf "${RED}[ERROR]${NC} %s\n" "$1"
 }
 
 # Check if running as root
@@ -90,14 +91,17 @@ else
         cp "$SSH_CONFIG" "${SSH_CONFIG}.bak"
     fi
 
-    # Disable root login
-    sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' "$SSH_CONFIG"
+    # Disable root login - BusyBox sed compatible
+    sed -i 's/^#*[[:space:]]*PermitRootLogin.*/PermitRootLogin no/' "$SSH_CONFIG" 2>/dev/null || \
+        sed -i '/^PermitRootLogin/c\PermitRootLogin no' "$SSH_CONFIG"
 
     # Disable password authentication (key-based only)
-    sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' "$SSH_CONFIG"
+    sed -i 's/^#*[[:space:]]*PasswordAuthentication.*/PasswordAuthentication no/' "$SSH_CONFIG" 2>/dev/null || \
+        sed -i '/^PasswordAuthentication/c\PasswordAuthentication no' "$SSH_CONFIG"
 
     # Disable empty passwords
-    sed -i 's/^#*PermitEmptyPasswords.*/PermitEmptyPasswords no/' "$SSH_CONFIG"
+    sed -i 's/^#*[[:space:]]*PermitEmptyPasswords.*/PermitEmptyPasswords no/' "$SSH_CONFIG" 2>/dev/null || \
+        sed -i '/^PermitEmptyPasswords/c\PermitEmptyPasswords no' "$SSH_CONFIG"
 
     # Restart SSH service
     rc-service sshd restart 2>/dev/null || true
@@ -116,20 +120,19 @@ USERNAME="${HOSTNAME}"
 log_info "Username will be: $USERNAME"
 
 # Check if user already exists
-if id "$USERNAME" &>/dev/null; then
+if id "$USERNAME" >/dev/null 2>&1; then
     log_warn "User $USERNAME already exists. Skipping user creation."
 
     # Ensure home permissions are correct for existing users too
-    chmod 700 "/home/$USERNAME"
-    chown "$USERNAME:$USERNAME" "/home/$USERNAME"
+    chmod 700 "/home/$USERNAME" 2>/dev/null || true
+    chown "$USERNAME:$USERNAME" "/home/$USERNAME" 2>/dev/null || true
 
     # Set shell to zsh for existing user
     CURRENT_SHELL=$(getent passwd "$USERNAME" | cut -d: -f7)
     if [ "$CURRENT_SHELL" != "/bin/zsh" ]; then
         log_info "Setting default shell to zsh for $USERNAME..."
         chsh -s /bin/zsh "$USERNAME" 2>/dev/null || \
-            usermod -s /bin/zsh "$USERNAME" 2>/dev/null || \
-            sed -i "s|^[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:$CURRENT_SHELL$|&|" /etc/passwd || true
+            usermod -s /bin/zsh "$USERNAME" 2>/dev/null || true
 
         # Verify and show current shell
         NEW_SHELL=$(getent passwd "$USERNAME" | cut -d: -f7)
@@ -150,9 +153,19 @@ else
     chown "$USERNAME:$USERNAME" "/home/$USERNAME"
 
     # CRITICAL FIX: Unlock the account by setting a random complex password
-    # (Shadow file "!" lock can prevent SSH login even with keys on some Alpine setups)
-    RANDOM_PASS=$(date +%s%N | sha256sum | base64 | head -c 32)
-    echo "$USERNAME:$RANDOM_PASS" | chpasswd
+    # BusyBox-compatible: use /dev/urandom instead of date +%N
+    RANDOM_PASS=$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 32)
+    echo "$USERNAME:$RANDOM_PASS" | chpasswd 2>/dev/null || {
+        # Fallback: use openssl if available
+        if command -v openssl >/dev/null 2>&1; then
+            RANDOM_PASS=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
+            echo "$USERNAME:$RANDOM_PASS" | chpasswd
+        else
+            # Final fallback: use timestamp with process ID
+            RANDOM_PASS="${HOSTNAME}$(date +%s)$$"
+            echo "$USERNAME:$RANDOM_PASS" | chpasswd
+        fi
+    }
 
     log_info "User $USERNAME created successfully (account unlocked with random password)"
 fi
@@ -174,21 +187,21 @@ AUTHORIZED_KEYS="$SSH_DIR/authorized_keys"
 # Check if authorized_keys already exists
 if [ -f "$AUTHORIZED_KEYS" ]; then
     log_warn "authorized_keys already exists for $USERNAME"
-    echo ""
-    echo -e "${YELLOW}Current SSH keys:${NC}"
+    printf ""
+    printf "${YELLOW}Current SSH keys:${NC}\n"
     cat "$AUTHORIZED_KEYS"
-    echo ""
+    printf ""
 
     # Ask if user wants to add more keys
-    echo -e "${YELLOW}Do you want to add more SSH keys? (y/n)${NC}"
+    printf "${YELLOW}Do you want to add more SSH keys? (y/n)${NC}\n"
     read -r ADD_MORE
 
     if [ "$ADD_MORE" != "y" ] && [ "$ADD_MORE" != "Y" ]; then
         log_info "Skipping SSH key addition"
     else
         while true; do
-            echo ""
-            echo -e "${GREEN}Paste SSH public key (or press Enter to finish):${NC}"
+            printf ""
+            printf "${GREEN}Paste SSH public key (or press Enter to finish):${NC}\n"
             read -r SSH_KEY
 
             if [ -z "$SSH_KEY" ]; then
@@ -199,34 +212,34 @@ if [ -f "$AUTHORIZED_KEYS" ]; then
             if grep -qF "$SSH_KEY" "$AUTHORIZED_KEYS" 2>/dev/null; then
                 log_warn "This SSH key already exists. Skipping."
             else
-                echo "$SSH_KEY" >> "$AUTHORIZED_KEYS"
+                printf "%s\n" "$SSH_KEY" >> "$AUTHORIZED_KEYS"
                 log_info "SSH key added successfully"
             fi
         done
     fi
 else
     # No existing keys, prompt for new ones
-    echo ""
-    echo -e "${GREEN}=========================================="
-    echo "SSH Key Setup"
-    echo -e "==========================================${NC}"
-    echo ""
-    echo "You can now add SSH public keys for $USERNAME"
-    echo -e "${YELLOW}IMPORTANT: Paste the entire key on a single line. Avoid extra newlines.${NC}"
-    echo "Paste one key at a time, or press Enter to finish"
-    echo ""
+    printf ""
+    printf "${GREEN}==========================================\n"
+    printf "SSH Key Setup\n"
+    printf "==========================================${NC}\n"
+    printf ""
+    printf "You can now add SSH public keys for $USERNAME\n"
+    printf "${YELLOW}IMPORTANT: Paste the entire key on a single line. Avoid extra newlines.${NC}\n"
+    printf "Paste one key at a time, or press Enter to finish\n"
+    printf ""
 
     KEY_COUNT=0
     while true; do
-        echo -e "${YELLOW}Enter SSH public key #$((KEY_COUNT + 1)) (or press Enter to finish):${NC} "
+        printf "${YELLOW}Enter SSH public key #%d (or press Enter to finish):${NC}\n" "$((KEY_COUNT + 1))"
         read -r SSH_KEY
 
         if [ -z "$SSH_KEY" ]; then
             if [ $KEY_COUNT -eq 0 ]; then
                 log_warn "No SSH keys were added!"
-                echo ""
-                echo -e "${RED}WARNING: You won't be able to SSH into this server without SSH keys!${NC}"
-                echo -e "${YELLOW}You can add keys later by manually editing: $AUTHORIZED_KEYS${NC}"
+                printf ""
+                printf "${RED}WARNING: You won't be able to SSH into this server without SSH keys!${NC}\n"
+                printf "${YELLOW}You can add keys later by manually editing: $AUTHORIZED_KEYS${NC}\n"
             else
                 log_info "SSH key setup completed. $KEY_COUNT key(s) added."
             fi
@@ -234,8 +247,8 @@ else
         fi
 
         # Basic validation - check if it looks like an SSH key
-        if echo "$SSH_KEY" | grep -qE '^(ssh-rsa|ssh-ed25519|ecdsa-sha2-nistp|ssh-dss) '; then
-            echo "$SSH_KEY" >> "$AUTHORIZED_KEYS"
+        if printf "%s\n" "$SSH_KEY" | grep -qE '^(ssh-rsa|ssh-ed25519|ecdsa-sha2-nistp|ssh-dss) '; then
+            printf "%s\n" "$SSH_KEY" >> "$AUTHORIZED_KEYS"
             KEY_COUNT=$((KEY_COUNT + 1))
             log_info "SSH key #$KEY_COUNT added"
         else
@@ -263,7 +276,7 @@ mkdir -p /etc/sudoers.d
 
 # Add user to sudoers with no password requirement
 if [ ! -f "/etc/sudoers.d/$USERNAME" ]; then
-    echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/$USERNAME"
+    printf "%s ALL=(ALL) NOPASSWD:ALL\n" "$USERNAME" > "/etc/sudoers.d/$USERNAME"
 fi
 
 # Set proper permissions
@@ -274,7 +287,12 @@ adduser "$USERNAME" wheel 2>/dev/null || true
 
 # Ensure wheel group can use sudo
 if ! grep -q "^%wheel ALL=(ALL) NOPASSWD: ALL" /etc/sudoers 2>/dev/null; then
-    sed -i 's/^# %wheel ALL=(ALL) NOPASSWD: ALL/%wheel ALL=(ALL) NOPASSWD: ALL/' /etc/sudoers 2>/dev/null || true
+    # BusyBox sed compatible - add after line or append
+    if grep -q "^# %wheel ALL=(ALL) NOPASSWD: ALL" /etc/sudoers 2>/dev/null; then
+        sed -i 's/^# %wheel ALL=(ALL) NOPASSWD: ALL/%wheel ALL=(ALL) NOPASSWD: ALL/' /etc/sudoers 2>/dev/null || true
+    else
+        printf "%%wheel ALL=(ALL) NOPASSWD: ALL\n" >> /etc/sudoers 2>/dev/null || true
+    fi
 fi
 
 log_info "Sudoers configured for $USERNAME"
@@ -283,9 +301,9 @@ log_info "Sudoers configured for $USERNAME"
 ROOT_PROFILE="/root/.profile"
 if [ -f "$ROOT_PROFILE" ]; then
     if ! grep -q "alias to-$USERNAME=" "$ROOT_PROFILE" 2>/dev/null; then
-        echo "" >> "$ROOT_PROFILE"
-        echo "# Quick alias to switch to $USERNAME" >> "$ROOT_PROFILE"
-        echo "alias to-$USERNAME='su - $USERNAME'" >> "$ROOT_PROFILE"
+        printf "" >> "$ROOT_PROFILE"
+        printf "# Quick alias to switch to %s\n" "$USERNAME" >> "$ROOT_PROFILE"
+        printf "alias to-%s='su - %s'\n" "$USERNAME" "$USERNAME" >> "$ROOT_PROFILE"
         log_info "Added alias 'to-$USERNAME' to root's profile"
     fi
 fi
@@ -293,24 +311,19 @@ fi
 # Add convenience alias for root to switch to user in .zshrc if it exists
 if [ -f "/root/.zshrc" ]; then
     if ! grep -q "alias to-$USERNAME=" "/root/.zshrc" 2>/dev/null; then
-        echo "" >> "/root/.zshrc"
-        echo "# Quick alias to switch to $USERNAME" >> "/root/.zshrc"
-        echo "alias to-$USERNAME='su - $USERNAME'" >> "/root/.zshrc"
+        printf "" >> "/root/.zshrc"
+        printf "# Quick alias to switch to %s\n" "$USERNAME" >> "/root/.zshrc"
+        printf "alias to-%s='su - %s'\n" "$USERNAME" "$USERNAME" >> "/root/.zshrc"
         log_info "Added alias 'to-$USERNAME' to root's .zshrc"
     fi
 fi
 
-# Test sudo configuration
+# Test sudo configuration - Alpine compatible method
 log_info "Verifying sudo configuration..."
-if sudo -U "$USERNAME" -l >/dev/null 2>&1; then
-    log_info "✓ User $USERNAME has sudo access"
+if [ -f "/etc/sudoers.d/$USERNAME" ] && grep -q "$USERNAME.*NOPASSWD.*ALL" "/etc/sudoers.d/$USERNAME"; then
+    log_info "✓ User $USERNAME has sudo access (verified via config)"
 else
-    # Alternative check if sudo -U doesn't work on Alpine
-    if [ -f "/etc/sudoers.d/$USERNAME" ] && grep -q "$USERNAME.*NOPASSWD.*ALL" "/etc/sudoers.d/$USERNAME"; then
-        log_info "✓ User $USERNAME has sudo access (verified via config)"
-    else
-        log_warn "Could not verify sudo access for $USERNAME"
-    fi
+    log_warn "Could not verify sudo access for $USERNAME"
 fi
 
 # ============================================
@@ -339,24 +352,24 @@ else
     log_warn "You may need to manually start it with: rc-service tailscale start"
 fi
 
-echo ""
+printf ""
 log_info "=========================================="
 log_info "Tailscale Setup"
 log_info "=========================================="
-echo ""
-echo -e "${YELLOW}Tailscale has been installed but NOT authenticated yet.${NC}"
-echo ""
-echo -e "${GREEN}To connect this server to your Tailscale network as a subnet router:${NC}"
-echo ""
-echo "1. Run this command to authenticate and advertise your local subnet:"
-echo -e "   ${YELLOW}tailscale up --advertise-routes=192.168.0.0/24 --accept-routes${NC}"
-echo ""
-echo "2. Open the URL shown in the output to authenticate via your Tailscale account"
-echo ""
-echo "3. In the Tailscale admin console, approve the subnet routes for this machine"
-echo ""
-echo -e "${GREEN}After setup, your local network (192.168.0.0/24) will be accessible from Tailscale.${NC}"
-echo ""
+printf ""
+printf "${YELLOW}Tailscale has been installed but NOT authenticated yet.${NC}\n"
+printf ""
+printf "${GREEN}To connect this server to your Tailscale network as a subnet router:${NC}\n"
+printf ""
+printf "1. Run this command to authenticate and advertise your local subnet:\n"
+printf "   ${YELLOW}tailscale up --advertise-routes=192.168.0.0/24 --accept-routes${NC}\n"
+printf ""
+printf "2. Open the URL shown in the output to authenticate via your Tailscale account\n"
+printf ""
+printf "3. In the Tailscale admin console, approve the subnet routes for this machine\n"
+printf ""
+printf "${GREEN}After setup, your local network (192.168.0.0/24) will be accessible from Tailscale.${NC}\n"
+printf ""
 
 # ============================================
 # 6. INSTALL DOCKER
@@ -382,7 +395,7 @@ log_info "Docker installed and started"
 # Display Docker version for verification
 docker --version
 docker compose version
-docker-compose --version 2>/dev/null || echo "docker-compose (standalone) not available"
+docker-compose --version 2>/dev/null || printf "docker-compose (standalone) not available\n"
 
 # ============================================
 # 7. INSTALL OH-MY-ZSH
@@ -509,31 +522,31 @@ log_info "Applying additional hardening..."
 
 # Set secure umask (if not already set)
 if ! grep -q "umask 027" /etc/profile 2>/dev/null; then
-    echo "umask 027" >> /etc/profile
+    printf "umask 027\n" >> /etc/profile
 fi
 
 # Disable core dumps (if not already set)
 if ! grep -q "hard core 0" /etc/security/limits.conf 2>/dev/null; then
-    echo "* hard core 0" >> /etc/security/limits.conf
-    echo "* soft core 0" >> /etc/security/limits.conf
+    printf "* hard core 0\n" >> /etc/security/limits.conf
+    printf "* soft core 0\n" >> /etc/security/limits.conf
 fi
 
 # Enable randomize_va_space (ASLR)
 if ! grep -q "randomize_va_space" /etc/sysctl.conf 2>/dev/null; then
-    echo "kernel.randomize_va_space = 2" >> /etc/sysctl.conf 2>/dev/null || true
+    printf "kernel.randomize_va_space = 2\n" >> /etc/sysctl.conf 2>/dev/null || true
 fi
 
 # Disable source routing
 if ! grep -q "accept_source_route = 0" /etc/sysctl.conf 2>/dev/null; then
-    echo "net.ipv4.conf.all.accept_source_route = 0" >> /etc/sysctl.conf 2>/dev/null || true
-    echo "net.ipv6.conf.all.accept_source_route = 0" >> /etc/sysctl.conf 2>/dev/null || true
+    printf "net.ipv4.conf.all.accept_source_route = 0\n" >> /etc/sysctl.conf 2>/dev/null || true
+    printf "net.ipv6.conf.all.accept_source_route = 0\n" >> /etc/sysctl.conf 2>/dev/null || true
 fi
 
 # Disable ICMP redirects
 if ! grep -q "accept_redirects = 0" /etc/sysctl.conf 2>/dev/null; then
-    echo "net.ipv4.conf.all.accept_redirects = 0" >> /etc/sysctl.conf 2>/dev/null || true
-    echo "net.ipv6.conf.all.accept_redirects = 0" >> /etc/sysctl.conf 2>/dev/null || true
-    echo "net.ipv4.conf.all.send_redirects = 0" >> /etc/sysctl.conf 2>/dev/null || true
+    printf "net.ipv4.conf.all.accept_redirects = 0\n" >> /etc/sysctl.conf 2>/dev/null || true
+    printf "net.ipv6.conf.all.accept_redirects = 0\n" >> /etc/sysctl.conf 2>/dev/null || true
+    printf "net.ipv4.conf.all.send_redirects = 0\n" >> /etc/sysctl.conf 2>/dev/null || true
 fi
 
 # Apply sysctl settings (may fail in containers, that's ok)
@@ -552,23 +565,23 @@ rm -rf /var/cache/apk/*
 # 10. SUMMARY
 # ============================================
 
-echo ""
+printf ""
 log_info "=========================================="
 log_info "Setup completed successfully!"
 log_info "=========================================="
-echo ""
+printf ""
 log_info "Summary:"
-echo "  - User created: $USERNAME"
-echo "  - User has full sudo access (NOPASSWD)"
-echo "  - SSH keys configured (if added during setup)"
-echo "  - Shell: zsh with Oh-My-Zsh"
-echo "  - Tailscale installed (requires manual setup)"
-echo "  - Docker & Docker Compose installed and running"
-echo "  - Firewall enabled (UFW)"
-echo "  - Fail2ban enabled"
-echo "  - SSH hardened (root login disabled, password auth disabled)"
-echo "  - Root alias 'to-$USERNAME' added for quick user switching"
-echo ""
+printf "  - User created: %s\n" "$USERNAME"
+printf "  - User has full sudo access (NOPASSWD)\n"
+printf "  - SSH keys configured (if added during setup)\n"
+printf "  - Shell: zsh with Oh-My-Zsh\n"
+printf "  - Tailscale installed (requires manual setup)\n"
+printf "  - Docker & Docker Compose installed and running\n"
+printf "  - Firewall enabled (UFW)\n"
+printf "  - Fail2ban enabled\n"
+printf "  - SSH hardened (root login disabled, password auth disabled)\n"
+printf "  - Root alias 'to-%s' added for quick user switching\n" "$USERNAME"
+printf ""
 log_warn "IMPORTANT NOTES:"
 log_warn "1. SSH password authentication is disabled - use SSH keys only"
 log_warn "2. Root login is disabled"
@@ -577,25 +590,25 @@ log_warn "4. User $USERNAME has full sudo access (no password required)"
 log_warn "5. From root, use 'to-$USERNAME' or 'su - $USERNAME' to switch to user"
 log_warn "6. Tailscale is installed but NOT authenticated - see instructions above"
 log_warn "7. If Tailscale daemon is not running, restart with: rc-service tailscale restart"
-echo ""
+printf ""
 log_info "To switch to the new user, run:"
-echo "  su - $USERNAME"
-echo "  or use the alias: to-$USERNAME"
-echo ""
+printf "  su - %s\n" "$USERNAME"
+printf "  or use the alias: to-%s\n" "$USERNAME"
+printf ""
 log_info "To verify sudo access:"
-echo "  sudo -u $USERNAME sudo whoami"
-echo ""
+printf "  sudo -u %s sudo whoami\n" "$USERNAME"
+printf ""
 log_info "To verify Docker:"
-echo "  docker run --rm hello-world"
-echo ""
+printf "  docker run --rm hello-world\n"
+printf ""
 log_info "To verify Docker Compose:"
-echo "  docker compose version"
-echo "  docker-compose --version"
-echo ""
+printf "  docker compose version\n"
+printf "  docker-compose --version\n"
+printf ""
 log_info "To connect Tailscale (subnet router for 192.168.0.0/24):"
-echo "  tailscale up --advertise-routes=192.168.0.0/24 --accept-routes"
-echo "  (Then approve routes in Tailscale admin console)"
-echo ""
+printf "  tailscale up --advertise-routes=192.168.0.0/24 --accept-routes\n"
+printf "  (Then approve routes in Tailscale admin console)\n"
+printf ""
 log_info "To test SSH connection (from another machine):"
-echo "  ssh $USERNAME@$(hostname -I | awk '{print $1}')"
-echo ""
+printf "  ssh %s@%s\n" "$USERNAME" "$(hostname -i | awk '{print $1}')"
+printf ""
