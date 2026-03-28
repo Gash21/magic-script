@@ -488,7 +488,40 @@ if grep -q "# User configuration" "$ZSHRC" 2>/dev/null; then
 else
     cat >> "$ZSHRC" << 'EOF'
 
-# User configuration
+# ============================================
+# TERMINAL & KEY BINDINGS FIX
+# ============================================
+# Fix backspace, delete, arrow keys, and other terminal issues over SSH
+
+# Ensure proper terminal type
+export TERM=${TERM:-xterm-256color}
+
+# Fix terminal key bindings for SSH sessions
+autoload -Uz zsh-line-init
+zsh-line-init() {
+    # Fix backspace key (most common issue)
+    bindkey '^?' backward-delete-char
+    bindkey '^H' backward-delete-char
+    # Fix delete key
+    bindkey "^[[3~" delete-char
+    bindkey "^[3;5~" delete-char
+    # Fix home/end keys
+    bindkey "^[[1~" beginning-of-line
+    bindkey "^[[4~" end-of-line
+    # Fix arrow keys
+    bindkey "^[[A" up-line-or-history
+    bindkey "^[[B" down-line-or-history
+    bindkey "^[[C" forward-char
+    bindkey "^[[D" backward-char
+}
+zsh-line-init
+
+# Set terminal erase character properly
+stty erase '^?' 2>/dev/null || true
+
+# ============================================
+# USER CONFIGURATION
+# ============================================
 export EDITOR=vim
 export VISUAL=vim
 
@@ -625,6 +658,7 @@ log_warn "4. User $USERNAME has full sudo access (no password required)"
 log_warn "5. From root, use 'to-$USERNAME' or 'su - $USERNAME' to switch to user"
 log_warn "6. Tailscale is installed but NOT authenticated - see instructions above"
 log_warn "7. If Tailscale daemon is not running, restart with: rc-service tailscale restart"
+log_warn "8. Terminal key bindings (backspace/arrows) are auto-configured for SSH"
 printf ""
 log_info "To switch to the new user, run:"
 printf "  su - %s\n" "$USERNAME"
