@@ -205,6 +205,60 @@ install_oh_my_zsh() {
 
     # Set up .zshrc with sensible defaults
     setup_zshrc
+
+    # Check if there's a pre-oh-my-zsh backup that needs merging
+    if [ -f "$HOME/.zshrc.pre-oh-my-zsh" ]; then
+        log_warn "Found .zshrc.pre-oh-my-zsh backup from Oh-My-Zsh installation"
+        printf ""
+        printf "${YELLOW}Oh-My-Zsh backed up your previous .zshrc configuration.${NC}\n"
+        printf "${YELLOW}Do you want to merge your old config with the new Oh-My-Zsh .zshrc? (y/n)${NC}\n"
+        read -r MERGE_CONFIG
+
+        if [ "$MERGE_CONFIG" = "y" ] || [ "$MERGE_CONFIG" = "Y" ]; then
+            log_info "Merging .zshrc.pre-oh-my-zsh into .zshrc..."
+
+            # Backup current .zshrc
+            cp "$HOME/.zshrc" "$HOME/.zshrc.before-merge"
+
+            # Extract aliases from backup
+            if grep -q "^alias " "$HOME/.zshrc.pre-oh-my-zsh"; then
+                ALIASES=$(grep "^alias " "$HOME/.zshrc.pre-oh-my-zsh")
+                cat >> "$HOME/.zshrc" << 'EOF'
+
+# Aliases merged from .zshrc.pre-oh-my-zsh
+EOF
+                echo "$ALIASES" >> "$HOME/.zshrc"
+                log_info "✓ Aliases merged"
+            fi
+
+            # Extract environment variables from backup (excluding PATH)
+            EXPORTS=$(grep "^export " "$HOME/.zshrc.pre-oh-my-zsh" | grep -v "export PATH=")
+            if [ -n "$EXPORTS" ]; then
+                cat >> "$HOME/.zshrc" << 'EOF'
+
+# Environment variables merged from .zshrc.pre-oh-my-zsh
+EOF
+                echo "$EXPORTS" >> "$HOME/.zshrc"
+                log_info "✓ Environment variables merged"
+            fi
+
+            # Extract custom functions from backup
+            if grep -q "^[a-zA-Z_][a-zA-Z0-9_]*() " "$HOME/.zshrc.pre-oh-my-zsh"; then
+                cat >> "$HOME/.zshrc" << 'EOF'
+
+# Functions merged from .zshrc.pre-oh-my-zsh
+EOF
+                grep "^[a-zA-Z_][a-zA-Z0-9_]*() " "$HOME/.zshrc.pre-oh-my-zsh" >> "$HOME/.zshrc"
+                log_info "✓ Functions merged"
+            fi
+
+            log_info "Merge completed. Backup saved as .zshrc.before-merge"
+            printf ""
+            printf "${YELLOW}If something went wrong, restore with: cp ~/.zshrc.before-merge ~/.zshrc${NC}\n"
+        else
+            log_info "Skipping merge. Your old config is preserved in .zshrc.pre-oh-my-zsh"
+        fi
+    fi
 }
 
 # ============================================
