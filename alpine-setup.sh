@@ -383,6 +383,30 @@ TERMFIX
     chmod 0644 /etc/profile.d/termfix.sh
 fi
 
+# Fix SSH server to override unknown TERM values (MOST RELIABLE FIX)
+# This runs BEFORE any profile scripts - fixes the error at the source
+if [ -f "$SSH_CONFIG" ]; then
+    if ! grep -q "^AcceptEnv TERM$" "$SSH_CONFIG" 2>/dev/null; then
+        # Comment out AcceptEnv TERM to prevent client from overriding
+        sed -i 's/^AcceptEnv TERM/#AcceptEnv TERM/' "$SSH_CONFIG" 2>/dev/null || true
+    fi
+
+    # Force server-side TERM override for unknown terminals
+    if ! grep -q "^SetEnv TERM$" "$SSH_CONFIG" 2>/dev/null; then
+        # Only override if the current TERM is unknown
+        cat >> "$SSH_CONFIG" << 'SSHTERM'
+
+# Override unknown terminal types from SSH clients (fixes xterm-ghostty errors)
+# This sets a sane default TERM on the server side
+Match *
+    SetEnv TERM=xterm-256color
+SSHTERM
+    fi
+
+    # Restart SSH to apply changes
+    rc-service sshd restart 2>/dev/null || true
+fi
+
 # ============================================
 # 7. CLEANUP
 # ============================================
