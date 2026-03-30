@@ -172,102 +172,7 @@ else
 fi
 
 # ============================================
-# 3. SETUP SSH KEYS
-# ============================================
-
-log_info "Setting up SSH keys..."
-
-# Create .ssh directory
-SSH_DIR="/home/$USERNAME/.ssh"
-mkdir -p "$SSH_DIR"
-chown "$USERNAME:$USERNAME" "$SSH_DIR"
-chmod 700 "$SSH_DIR"
-
-AUTHORIZED_KEYS="$SSH_DIR/authorized_keys"
-
-# Check if authorized_keys already exists
-if [ -f "$AUTHORIZED_KEYS" ]; then
-    log_warn "authorized_keys already exists for $USERNAME"
-    printf ""
-    printf "${YELLOW}Current SSH keys:${NC}\n"
-    cat "$AUTHORIZED_KEYS"
-    printf ""
-
-    # Ask if user wants to add more keys
-    printf "${YELLOW}Do you want to add more SSH keys? (y/n)${NC}\n"
-    read -r ADD_MORE
-
-    if [ "$ADD_MORE" != "y" ] && [ "$ADD_MORE" != "Y" ]; then
-        log_info "Skipping SSH key addition"
-    else
-        while true; do
-            printf ""
-            printf "${GREEN}Paste SSH public key (or press Enter to finish):${NC}\n"
-            read -r SSH_KEY
-
-            if [ -z "$SSH_KEY" ]; then
-                break
-            fi
-
-            # Check if key already exists
-            if grep -qF "$SSH_KEY" "$AUTHORIZED_KEYS" 2>/dev/null; then
-                log_warn "This SSH key already exists. Skipping."
-            else
-                printf "%s\n" "$SSH_KEY" >> "$AUTHORIZED_KEYS"
-                log_info "SSH key added successfully"
-            fi
-        done
-    fi
-else
-    # No existing keys, prompt for new ones
-    printf ""
-    printf "${GREEN}==========================================\n"
-    printf "SSH Key Setup\n"
-    printf "==========================================${NC}\n"
-    printf ""
-    printf "You can now add SSH public keys for $USERNAME\n"
-    printf "${YELLOW}IMPORTANT: Paste the entire key on a single line. Avoid extra newlines.${NC}\n"
-    printf "Paste one key at a time, or press Enter to finish\n"
-    printf ""
-
-    KEY_COUNT=0
-    while true; do
-        printf "${YELLOW}Enter SSH public key #%d (or press Enter to finish):${NC}\n" "$((KEY_COUNT + 1))"
-        read -r SSH_KEY
-
-        if [ -z "$SSH_KEY" ]; then
-            if [ $KEY_COUNT -eq 0 ]; then
-                log_warn "No SSH keys were added!"
-                printf ""
-                printf "${RED}WARNING: You won't be able to SSH into this server without SSH keys!${NC}\n"
-                printf "${YELLOW}You can add keys later by manually editing: $AUTHORIZED_KEYS${NC}\n"
-            else
-                log_info "SSH key setup completed. $KEY_COUNT key(s) added."
-            fi
-            break
-        fi
-
-        # Basic validation - check if it looks like an SSH key
-        if printf "%s\n" "$SSH_KEY" | grep -qE '^(ssh-rsa|ssh-ed25519|ecdsa-sha2-nistp|ssh-dss) '; then
-            printf "%s\n" "$SSH_KEY" >> "$AUTHORIZED_KEYS"
-            KEY_COUNT=$((KEY_COUNT + 1))
-            log_info "SSH key #$KEY_COUNT added"
-        else
-            log_warn "Invalid SSH key format. Please paste a valid public key."
-            log_warn "Key should start with: ssh-rsa, ssh-ed25519, ecdsa-sha2-nistp*, or ssh-dss"
-        fi
-    done
-fi
-
-# Set proper permissions for authorized_keys
-if [ -f "$AUTHORIZED_KEYS" ]; then
-    chown "$USERNAME:$USERNAME" "$AUTHORIZED_KEYS"
-    chmod 600 "$AUTHORIZED_KEYS"
-    log_info "SSH keys configured for $USERNAME"
-fi
-
-# ============================================
-# 4. SETUP SUDOERS
+# 3. SETUP SUDOERS
 # ============================================
 
 log_info "Configuring sudoers..."
@@ -328,7 +233,7 @@ else
 fi
 
 # ============================================
-# 5. INSTALL TAILSCALE
+# 4. INSTALL TAILSCALE
 # ============================================
 
 log_info "Installing Tailscale..."
@@ -373,7 +278,7 @@ printf "${GREEN}After setup, your local network (192.168.0.0/24) will be accessi
 printf ""
 
 # ============================================
-# 6. INSTALL DOCKER
+# 5. INSTALL DOCKER
 # ============================================
 
 log_info "Installing Docker..."
@@ -399,201 +304,9 @@ docker compose version
 docker-compose --version 2>/dev/null || printf "docker-compose (standalone) not available\n"
 
 # ============================================
-# 7. INSTALL OH-MY-ZSH
-# ============================================
-
-log_info "Installing Oh-My-Zsh..."
-
-# Verify git is available (required for Oh-My-Zsh)
-if ! command -v git >/dev/null 2>&1; then
-    log_error "git is not installed. Installing git first..."
-    apk add --no-cache git
-fi
-
-# Check if oh-my-zsh is already installed
-if [ -d "/home/$USERNAME/.oh-my-zsh" ]; then
-    log_warn "Oh-My-Zsh already installed for $USERNAME. Skipping installation."
-else
-    log_info "Downloading Oh-My-Zsh installation script..."
-
-    # Save current directory
-    CURRENT_DIR=$(pwd)
-
-    # Download oh-my-zsh directly (avoiding su permission issues in LXC)
-    cd "/home/$USERNAME" || { log_error "Cannot access home directory"; exit 1; }
-
-    # Download and install oh-my-zsh using a non-interactive method
-    if command -v curl >/dev/null 2>&1; then
-        if ! curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh -o install.sh; then
-            log_error "Failed to download Oh-My-Zsh installer with curl"
-            cd "$CURRENT_DIR" || exit 1
-            exit 1
-        fi
-    elif command -v wget >/dev/null 2>&1; then
-        if ! wget -q https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh -O install.sh; then
-            log_error "Failed to download Oh-My-Zsh installer with wget"
-            cd "$CURRENT_DIR" || exit 1
-            exit 1
-        fi
-    else
-        log_error "Neither curl nor wget is available"
-        cd "$CURRENT_DIR" || exit 1
-        exit 1
-    fi
-
-    # Verify installer was downloaded
-    if [ ! -f install.sh ]; then
-        log_error "Installer script not found after download"
-        cd "$CURRENT_DIR" || exit 1
-        exit 1
-    fi
-
-    # Run the installer in unattended mode
-    log_info "Running Oh-My-Zsh installer..."
-    if ! sh install.sh --unattended --keep-zshrc; then
-        log_warn "Oh-My-Zsh installer failed, but continuing..."
-    fi
-
-    # Clean up
-    rm -f install.sh
-
-    # Return to original directory
-    cd "$CURRENT_DIR" || exit 1
-
-    # Fix ownership (ensure all files belong to the user) - ONLY if directory exists
-    if [ -d "/home/$USERNAME/.oh-my-zsh" ]; then
-        chown -R "$USERNAME:$USERNAME" "/home/$USERNAME/.oh-my-zsh" 2>/dev/null || true
-        log_info "Oh-My-Zsh installed successfully"
-    else
-        log_warn "Oh-My-Zsh installation may have failed - .oh-my-zsh directory not found"
-        log_warn "You can install it manually later by running as the user: sh -c \"$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)\" \"\" --unattended"
-    fi
-
-    # Fix .zshrc ownership if it exists
-    if [ -f "/home/$USERNAME/.zshrc" ]; then
-        chown "$USERNAME:$USERNAME" "/home/$USERNAME/.zshrc" 2>/dev/null || true
-    fi
-fi
-
-# Set up a robust .zshrc with sensible defaults
-ZSHRC="/home/$USERNAME/.zshrc"
-
-# Backup original .zshrc if it exists
-if [ -f "$ZSHRC" ]; then
-    cp "$ZSHRC" "${ZSHRC}.bak"
-fi
-
-# Add useful configurations to .zshrc (if not already added)
-if grep -q "# User configuration" "$ZSHRC" 2>/dev/null; then
-    log_warn "Custom zsh configuration already exists. Skipping .zshrc modification."
-else
-    cat >> "$ZSHRC" << 'EOF'
 
 # ============================================
-# TERMINAL & KEY BINDINGS FIX
-# ============================================
-# Fix backspace, delete, arrow keys, and other terminal issues over SSH
-
-# Smart terminal detection - fall back to known-good terminals
-# This handles terminals like xterm-ghostty, wezterm, etc. that Alpine doesn't have
-if ! infocmp "$TERM" >/dev/null 2>&1; then
-    # Current TERM not available, try common alternatives in order of preference
-    for term in xterm-256color xterm-color xterm vt100; do
-        if infocmp "$term" >/dev/null 2>&1; then
-            export TERM="$term"
-            break
-        fi
-    done
-fi
-
-# Fix terminal key bindings for SSH sessions
-autoload -Uz zsh-line-init
-zsh-line-init() {
-    # Fix backspace key (most common issue)
-    bindkey '^?' backward-delete-char
-    bindkey '^H' backward-delete-char
-    # Fix delete key
-    bindkey "^[[3~" delete-char
-    bindkey "^[3;5~" delete-char
-    # Fix home/end keys
-    bindkey "^[[1~" beginning-of-line
-    bindkey "^[[4~" end-of-line
-    # Fix arrow keys
-    bindkey "^[[A" up-line-or-history
-    bindkey "^[[B" down-line-or-history
-    bindkey "^[[C" forward-char
-    bindkey "^[[D" backward-char
-}
-zsh-line-init
-
-# Set terminal erase character properly
-stty erase '^?' 2>/dev/null || true
-
-# ============================================
-# USER CONFIGURATION
-# ============================================
-export EDITOR=vim
-export VISUAL=vim
-
-# Add aliases
-alias ll='ls -lah'
-alias la='ls -A'
-alias l='ls -CF'
-alias ..='cd ..'
-alias ...='cd ../..'
-alias ~='cd ~'
-
-# Docker aliases
-alias d='docker'
-alias dc='docker compose'
-alias dc1='docker-compose'
-alias dps='docker ps'
-alias dpsa='docker ps -a'
-alias di='docker images'
-alias dex='docker exec -it'
-alias dl='docker logs -f'
-alias dcp='docker compose pull'
-alias dcup='docker compose up -d'
-alias dcdown='docker compose down'
-alias dcps='docker compose ps'
-
-# Git aliases
-alias gs='git status'
-alias ga='git add'
-alias gc='git commit'
-alias gp='git push'
-alias gl='git log --oneline --graph --decorate'
-
-# Tailscale aliases
-alias ts='tailscale'
-alias tss='tailscale status'
-alias tsup='sudo tailscale up --advertise-routes=192.168.0.0/24 --accept-routes'
-alias tsdown='sudo tailscale down'
-
-# History configuration
-HISTSIZE=10000
-SAVEHIST=10000
-setopt SHARE_HISTORY
-setopt HIST_IGNORE_DUPS
-setopt HIST_IGNORE_SPACE
-
-# Completion
-autoload -Uz compinit
-compinit
-
-# Better completion
-zstyle ':completion:*' menu select
-zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}'
-EOF
-
-    # Fix permissions
-    chown "$USERNAME:$USERNAME" "$ZSHRC"
-fi
-
-log_info "Oh-My-Zsh installed and configured for $USERNAME"
-
-# ============================================
-# 8. ADDITIONAL HARDENING
+# 6. ADDITIONAL HARDENING
 # ============================================
 
 log_info "Applying additional hardening..."
@@ -671,7 +384,7 @@ TERMFIX
 fi
 
 # ============================================
-# 9. CLEANUP
+# 7. CLEANUP
 # ============================================
 
 log_info "Cleaning up..."
@@ -685,34 +398,38 @@ rm -rf /var/cache/apk/*
 
 printf ""
 log_info "=========================================="
-log_info "Setup completed successfully!"
+log_info "System-level setup completed successfully!"
 log_info "=========================================="
 printf ""
 log_info "Summary:"
 printf "  - User created: %s\n" "$USERNAME"
 printf "  - User has full sudo access (NOPASSWD)\n"
-printf "  - SSH keys configured (if added during setup)\n"
-printf "  - Shell: zsh with Oh-My-Zsh\n"
 printf "  - Tailscale installed (requires manual setup)\n"
 printf "  - Docker & Docker Compose installed and running\n"
 printf "  - Firewall enabled (UFW)\n"
 printf "  - Fail2ban enabled\n"
 printf "  - SSH hardened (root login disabled, password auth disabled)\n"
 printf "  - Root alias 'to-%s' added for quick user switching\n" "$USERNAME"
+printf "  - Terminal type detection configured system-wide\n"
+printf ""
+log_warn "NEXT STEPS:"
+log_warn "1. Switch to the new user: su - %s" "$USERNAME"
+log_warn "2. Run the user-level setup script: ./alpine-user-script.sh"
 printf ""
 log_warn "IMPORTANT NOTES:"
 log_warn "1. SSH password authentication is disabled - use SSH keys only"
 log_warn "2. Root login is disabled"
-log_warn "3. If you didn't add SSH keys, add them manually to: $AUTHORIZED_KEYS"
-log_warn "4. User $USERNAME has full sudo access (no password required)"
-log_warn "5. From root, use 'to-$USERNAME' or 'su - $USERNAME' to switch to user"
-log_warn "6. Tailscale is installed but NOT authenticated - see instructions above"
-log_warn "7. If Tailscale daemon is not running, restart with: rc-service tailscale restart"
-log_warn "8. Terminal key bindings (backspace/arrows) are auto-configured for SSH"
+log_warn "3. User $USERNAME has full sudo access (no password required)"
+log_warn "4. From root, use 'to-$USERNAME' or 'su - $USERNAME' to switch to user"
+log_warn "5. Tailscale is installed but NOT authenticated - see instructions above"
+log_warn "6. If Tailscale daemon is not running, restart with: rc-service tailscale restart"
 printf ""
-log_info "To switch to the new user, run:"
+log_info "To switch to the new user:"
 printf "  su - %s\n" "$USERNAME"
 printf "  or use the alias: to-%s\n" "$USERNAME"
+printf ""
+log_info "To run user-level setup (as $USERNAME):"
+printf "  ./alpine-user-script.sh\n"
 printf ""
 log_info "To verify sudo access:"
 printf "  sudo -u %s sudo whoami\n" "$USERNAME"
@@ -727,7 +444,4 @@ printf ""
 log_info "To connect Tailscale (subnet router for 192.168.0.0/24):"
 printf "  tailscale up --advertise-routes=192.168.0.0/24 --accept-routes\n"
 printf "  (Then approve routes in Tailscale admin console)\n"
-printf ""
-log_info "To test SSH connection (from another machine):"
-printf "  ssh %s@%s\n" "$USERNAME" "$(hostname -i | awk '{print $1}')"
 printf ""

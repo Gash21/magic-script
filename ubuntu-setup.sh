@@ -719,34 +719,38 @@ cleanup() {
 print_summary() {
     printf ""
     log_info "=========================================="
-    log_info "Setup completed successfully!"
+    log_info "System-level setup completed successfully!"
     log_info "=========================================="
     printf ""
     log_info "Summary:"
     printf "  - User created: %s\n" "$USERNAME"
     printf "  - User has full sudo access (NOPASSWD)\n"
-    printf "  - SSH keys configured (if added during setup)\n"
-    printf "  - Shell: zsh with Oh-My-Zsh\n"
     printf "  - Tailscale installed (requires manual setup)\n"
     printf "  - Docker & Docker Compose installed and running\n"
     printf "  - Firewall enabled (UFW)\n"
     printf "  - Fail2ban enabled\n"
     printf "  - SSH hardened (root login disabled, password auth disabled)\n"
     printf "  - Root alias 'to-%s' added for quick user switching\n" "$USERNAME"
+    printf "  - Terminal type detection configured system-wide\n"
+    printf ""
+    log_warn "NEXT STEPS:"
+    log_warn "1. Switch to the new user: su - %s" "$USERNAME"
+    log_warn "2. Run the user-level setup script: ./ubuntu-user-script.sh"
     printf ""
     log_warn "IMPORTANT NOTES:"
     log_warn "1. SSH password authentication is disabled - use SSH keys only"
     log_warn "2. Root login is disabled"
-    log_warn "3. If you didn't add SSH keys, add them manually to: $AUTHORIZED_KEYS"
-    log_warn "4. User $USERNAME has full sudo access (no password required)"
-    log_warn "5. From root, use 'to-$USERNAME' or 'su - $USERNAME' to switch to user"
-    log_warn "6. Tailscale is installed but NOT authenticated - see instructions above"
-    log_warn "7. If Tailscale daemon is not running, restart with: systemctl restart tailscaled"
-    log_warn "8. Terminal key bindings (backspace/arrows) are auto-configured for SSH"
+    log_warn "3. User $USERNAME has full sudo access (no password required)"
+    log_warn "4. From root, use 'to-$USERNAME' or 'su - $USERNAME' to switch to user"
+    log_warn "5. Tailscale is installed but NOT authenticated - see instructions above"
+    log_warn "6. If Tailscale daemon is not running, restart with: systemctl restart tailscaled"
     printf ""
-    log_info "To switch to the new user, run:"
+    log_info "To switch to the new user:"
     printf "  su - %s\n" "$USERNAME"
     printf "  or use the alias: to-%s\n" "$USERNAME"
+    printf ""
+    log_info "To run user-level setup (as $USERNAME):"
+    printf "  ./ubuntu-user-script.sh\n"
     printf ""
     log_info "To verify sudo access:"
     printf "  sudo -u %s sudo whoami\n" "$USERNAME"
@@ -761,9 +765,6 @@ print_summary() {
     printf "  sudo tailscale up --advertise-routes=192.168.0.0/24 --accept-routes\n"
     printf "  (Then approve routes in Tailscale admin console)\n"
     printf ""
-    log_info "To test SSH connection (from another machine):"
-    printf "  ssh %s@%s\n" "$USERNAME" "$(hostname -i | awk '{print $1}')"
-    printf ""
 }
 
 # ============================================
@@ -774,11 +775,9 @@ main() {
     check_root
     basic_hardening
     create_user
-    setup_ssh_keys
     setup_sudoers
     install_tailscale
     install_docker
-    install_oh_my_zsh
     additional_hardening
     cleanup
     print_summary
