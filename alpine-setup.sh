@@ -631,6 +631,46 @@ fi
 sysctl -p 2>/dev/null || log_warn "Some sysctl settings could not be applied (may be normal in containers)"
 
 # ============================================
+# FIX TERMINAL TYPE DETECTION (SYSTEM-WIDE)
+# ============================================
+
+log_info "Fixing terminal type detection system-wide..."
+
+# Add terminal detection to /etc/profile (runs before shell-specific files)
+if ! grep -q "TERM fallback for unknown terminals" /etc/profile 2>/dev/null; then
+    cat >> /etc/profile << 'TERMFIX'
+
+# TERM fallback for unknown terminals (xterm-ghostty, wezterm, etc.)
+# This fixes "unknown terminal type" errors over SSH
+if ! infocmp "$TERM" >/dev/null 2>&1; then
+    for term in xterm-256color xterm-color xterm vt100; do
+        if infocmp "$term" >/dev/null 2>&1; then
+            export TERM="$term"
+            break
+        fi
+    done
+fi
+TERMFIX
+fi
+
+# Also create /etc/profile.d/termfix.sh if directory exists (modern systems)
+if [ -d /etc/profile.d ]; then
+    cat > /etc/profile.d/termfix.sh << 'TERMFIX'
+# TERM fallback for unknown terminals (xterm-ghostty, wezterm, etc.)
+# This fixes "unknown terminal type" errors over SSH
+if ! infocmp "$TERM" >/dev/null 2>&1; then
+    for term in xterm-256color xterm-color xterm vt100; do
+        if infocmp "$term" >/dev/null 2>&1; then
+            export TERM="$term"
+            break
+        fi
+    done
+fi
+TERMFIX
+    chmod 0644 /etc/profile.d/termfix.sh
+fi
+
+# ============================================
 # 9. CLEANUP
 # ============================================
 
