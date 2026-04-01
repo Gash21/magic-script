@@ -282,6 +282,22 @@ setup_zshrc() {
         cat >> "$ZSHRC" << 'EOF'
 
 # ============================================
+# FIX CORRUPTED COMPLETION CACHE
+# ============================================
+# Remove corrupted .zcompdump on shell startup to prevent bus errors
+# This is common in LXC containers with filesystem issues
+ZSH_COMPDUMP_FILE="$HOME/.zcompdump-${HOSTNAME}-${ZSH_VERSION}"
+if [ -f "$ZSH_COMPDUMP_FILE" ]; then
+    # Test if file is corrupted by trying to read it
+    if ! read -r < "$ZSH_COMPDUMP_FILE" 2>/dev/null; then
+        # File is corrupted, remove it
+        rm -f "$ZSH_COMPDUMP_FILE" 2>/dev/null || true
+    fi
+fi
+# Also clean up old .zcompdump files
+rm -f "$HOME/.zcompdump"* 2>/dev/null || true
+
+# ============================================
 # TERMINAL & KEY BINDINGS FIX
 # ============================================
 # Fix backspace, delete, arrow keys, and other terminal issues over SSH
@@ -368,6 +384,10 @@ SAVEHIST=10000
 setopt SHARE_HISTORY
 setopt HIST_IGNORE_DUPS
 setopt HIST_IGNORE_SPACE
+
+# Disable completion dump to prevent bus errors
+# Some LXC containers have issues with .zcompdump file corruption
+setopt NO_AUTO_MENU
 
 # Completion
 autoload -Uz compinit
