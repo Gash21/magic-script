@@ -833,7 +833,7 @@ fi
 
 # Start GoClaw
 echo "Starting GoClaw..."
-docker-compose -f /root/docker-compose.goclaw.yml up -d
+docker compose -f /root/docker-compose.goclaw.yml up -d
 
 # Show status
 echo ""
@@ -858,7 +858,7 @@ echo "Stopping pipeline services..."
 
 # Stop GoClaw
 echo "Stopping GoClaw..."
-docker-compose -f /root/docker-compose.goclaw.yml down
+docker compose -f /root/docker-compose.goclaw.yml down
 
 # Ask about Redis
 read -p "Stop Redis too? (y/N): " -n 1 -r
