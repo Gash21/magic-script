@@ -74,33 +74,43 @@ install_packages() {
 }
 
 #-------------------------------------------------------------------------------
-# 3. SSH Hardening
+# 3. SSH Hardening (Safe Mode - Checks for SSH keys first)
 #-------------------------------------------------------------------------------
 harden_ssh() {
     log_step "Hardening SSH configuration..."
 
     local sshd_config="/etc/ssh/sshd_config"
     local sshd_config_backup="/etc/ssh/sshd_config.bak"
+    local ssh_dir="/home/$USERNAME/.ssh"
+    local authorized_keys="$ssh_dir/authorized_keys"
 
     # Backup config if not already backed up
     [[ ! -f "$sshd_config_backup" ]] && cp "$sshd_config" "$sshd_config_backup"
 
-    # Disable root login
+    # Disable root login (safe - you'll still have user account)
     sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' "$sshd_config"
-
-    # Disable password authentication (key-based only)
-    sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' "$sshd_config"
 
     # Disable empty passwords
     sed -i 's/^#*PermitEmptyPasswords.*/PermitEmptyPasswords no/' "$sshd_config"
 
-    # Disable challenge-response auth (we use key-based only)
-    sed -i 's/^#*ChallengeResponseAuthentication.*/ChallengeResponseAuthentication no/' "$sshd_config"
+    # Check if user has SSH keys before disabling password auth
+    if [[ -f "$authorized_keys" ]] && [[ -s "$authorized_keys" ]]; then
+        # authorized_keys exists and is not empty - safe to disable password auth
+        sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' "$sshd_config"
+        sed -i 's/^#*ChallengeResponseAuthentication.*/ChallengeResponseAuthentication no/' "$sshd_config"
+        log_info "SSH keys detected - password authentication disabled"
+    else
+        # No SSH keys found - keep password auth enabled to prevent lockout
+        log_warn "No SSH keys found in $authorized_keys - password authentication LEFT ENABLED"
+        log_warn "Add your SSH keys, then manually disable password auth"
+        # Ensure password auth is enabled
+        sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' "$sshd_config"
+    fi
 
     # Ensure SSH uses our hardened config
     systemctl reload ssh || systemctl restart ssh || true
 
-    log_info "SSH hardened: root login disabled, password auth disabled"
+    log_info "SSH hardened: root login disabled"
 }
 
 #-------------------------------------------------------------------------------
@@ -524,12 +534,15 @@ print_summary() {
     echo "Docker:     Installed with ${DOCKER_LOG_MAX_SIZE} log rotation"
     echo "Firewall:   UFW (SSH, HTTP, HTTPS, Docker allowed)"
     echo "Fail2ban:   Enabled (3 retries, 1hr ban)"
-    echo "SSH:        Root login disabled, key-based auth only"
+    echo "SSH:        Root login disabled, password auth enabled (add keys to disable)"
     echo ""
     echo "Next steps:"
-    echo "  1. Add SSH keys to: /home/$USERNAME/.ssh/authorized_keys"
-    echo "  2. Switch to user:  su - $USERNAME"
-    echo "  3. Connect Tailscale: sudo tailscale up --advertise-routes=${TAILSCALE_SUBNET}"
+    echo "  1. Add your SSH public key to: /home/$USERNAME/.ssh/authorized_keys"
+    echo "  2. After adding keys, optionally disable password auth:"
+    echo "     sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config"
+    echo "     sudo systemctl restart ssh"
+    echo "  3. Switch to user:  su - $USERNAME"
+    echo "  4. Connect Tailscale: sudo tailscale up --advertise-routes=${TAILSCALE_SUBNET}"
     echo ""
 }
 
