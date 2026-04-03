@@ -474,16 +474,15 @@ EOF
 
     # SSH server-side TERM override (most reliable fix)
     local sshd_config="/etc/ssh/sshd_config"
-    if [[ -f "$sshd_config" ]] && ! grep -q "^Match.*SetEnv.*TERM" "$sshd_config"; then
+    if [[ -f "$sshd_config" ]] && ! grep -q "^SetEnv TERM" "$sshd_config"; then
         # Comment out AcceptEnv TERM to prevent client override
         sed -i 's/^AcceptEnv TERM/#AcceptEnv TERM/' "$sshd_config" 2>/dev/null || true
 
-        # Add server-side TERM override
+        # Add server-side TERM override (no Match block - applies to all)
         {
             echo ""
             echo "# Server-side TERM override for unknown terminal types"
-            echo "Match *"
-            echo "    SetEnv TERM=xterm-256color"
+            echo "SetEnv TERM=xterm-256color"
         } >> "$sshd_config"
 
         systemctl reload ssh 2>/dev/null || systemctl restart ssh 2>/dev/null || true
