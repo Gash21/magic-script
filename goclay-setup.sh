@@ -2,6 +2,7 @@
 #===============================================================================
 # GoClaw Development Environment Setup Script
 # Purpose: Install GoClaw, Node.js, Claude Code, and development dependencies
+#          with complete pipeline directory structure and helper scripts
 # Target: Ubuntu/Debian systems (after ubuntu-setup.sh has been run)
 #===============================================================================
 
@@ -14,6 +15,8 @@ readonly NODE_VERSION="22"
 readonly GOCLAW_IMAGE="ghcr.io/nextlevelbuilder/goclaw:full"
 readonly GOCLAW_PORT="18789"
 readonly USERNAME="$(hostname)"
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly PROJECT_ROOT="$SCRIPT_DIR"
 
 #-------------------------------------------------------------------------------
 # Colors & Logging
@@ -28,6 +31,9 @@ log_info()  { printf "${GREEN}[INFO]${NC} %s\n" "$1"; }
 log_warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
 log_error() { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
 log_step()  { printf "${BLUE}[STEP]${NC} %s\n" "$1"; }
+check_pass() { printf "  ${GREEN}✅${NC} %s\n" "$1"; }
+check_warn() { printf "  ${YELLOW}⚠️${NC}  %s\n" "$1"; }
+check_fail() { printf "  ${RED}❌${NC} %s\n" "$1"; }
 
 #-------------------------------------------------------------------------------
 # Pre-flight Checks
@@ -363,32 +369,678 @@ setup_user_environment() {
 }
 
 #-------------------------------------------------------------------------------
-# 10. Create .env Template
+# 10. Pipeline Directory Structure
 #-------------------------------------------------------------------------------
-create_env_template() {
-    log_step "Creating .env template..."
+create_pipeline_structure() {
+    log_step "Creating pipeline directory structure..."
 
-    local env_file="/root/.env.goclaw.template"
+    local goclaw_dir="${PROJECT_ROOT}/.goclaw"
+    local agent_context_dir="${PROJECT_ROOT}/.agent-context"
+    local scripts_dir="${PROJECT_ROOT}/scripts"
 
-    if [[ ! -f "$env_file" ]]; then
-        cat > "$env_file" << 'EOF'
-# GoClaw Environment Variables
-# Copy this file to .env and fill in your API keys
+    # Create .goclaw directory structure
+    mkdir -p "${goclaw_dir}/agents"
+    mkdir -p "${goclaw_dir}/worktrees"
 
-OPENAI_API_KEY=your_openai_api_key_here
-MINIMAX_API_KEY=your_minimax_api_key_here
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
-TELEGRAM_CHAT_ID=your_telegram_chat_id_here
-EOF
-        log_info "Environment template created: ${env_file}"
-        log_warn "Copy to .env and fill in your API keys before starting GoClaw"
-    else
-        log_info "Environment template already exists - skipping"
-    fi
+    # Create .agent-context directory
+    mkdir -p "${agent_context_dir}"
+    touch "${agent_context_dir}/.gitkeep"
+
+    # Create scripts directory
+    mkdir -p "${scripts_dir}"
+
+    log_info "Pipeline directory structure created"
 }
 
 #-------------------------------------------------------------------------------
-# 11. Start Services
+# 11. Agent Definitions
+#-------------------------------------------------------------------------------
+create_agent_definitions() {
+    log_step "Creating agent definitions..."
+
+    local agents_dir="${PROJECT_ROOT}/.goclaw/agents"
+
+    # PO Agent
+    cat > "${agents_dir}/po-agent.md" << 'EOF'
+# Product Owner Agent
+
+## Responsibilities
+- Gather and clarify requirements from stakeholders
+- Write and maintain PRD (Product Requirements Document)
+- Create user stories with acceptance criteria
+- Prioritize backlog based on business value
+- Accept/reject work based on acceptance criteria
+
+## Wave Activities
+- **Wave 1**: Sprint planning, backlog refinement
+- **Wave 2**: Answer clarification questions from tech agents
+- **Wave 3**: Accept completed work against acceptance criteria
+
+## Success Criteria
+- PRD is clear and unambiguous
+- Acceptance criteria are testable
+- Backlog is properly prioritized
+EOF
+
+    # Tech Lead Agent
+    cat > "${agents_dir}/techlead-agent.md" << 'EOF'
+# Technical Lead Agent
+
+## Responsibilities
+- Review PRD for technical feasibility
+- Identify technical risks and dependencies
+- Make architecture decisions (when to use architecture agent)
+- Coordinate between BE, FE, DB agents
+- Ensure code quality and best practices
+
+## Wave Activities
+- **Wave 1**: Architecture planning, tech stack selection
+- **Wave 2**: Technical guidance, conflict resolution
+- **Wave 3**: Code review, technical sign-off
+
+## Success Criteria
+- Architecture is scalable and maintainable
+- Technical risks are identified and mitigated
+- Code meets quality standards
+EOF
+
+    # Orchestrator Agent
+    cat > "${agents_dir}/orchestrator.md" << 'EOF'
+# Orchestrator Agent
+
+## Responsibilities
+- Coordinate all agents during sprint execution
+- Manage task dependencies and parallelization
+- Monitor circuit breaker status
+- Handle agent failures and retries
+- Report progress to stakeholders
+
+## Wave Activities
+- **All Waves**: Coordination and monitoring
+
+## Success Criteria
+- All agents complete tasks in correct order
+- Circuit breaker trips are handled gracefully
+- Stakeholders are kept informed
+EOF
+
+    # Backend Agent
+    cat > "${agents_dir}/be-agent.md" << 'EOF'
+# Backend Agent
+
+## Responsibilities
+- Implement business logic in backend code
+- Consume database schema (read-only, do not modify)
+- Create API endpoints
+- Write unit and integration tests
+- Follow tech lead architectural guidance
+
+## Wave Activities
+- **Wave 1**: API design, backend planning
+- **Wave 2**: Implementation, testing
+- **Wave 3**: Bug fixes, refinement
+
+## Success Criteria
+- API endpoints work as specified
+- Business logic is correct
+- Tests have good coverage
+EOF
+
+    # Frontend Agent
+    cat > "${agents_dir}/fe-agent.md" << 'EOF'
+# Frontend Agent
+
+## Responsibilities
+- Implement UI components
+- Use codegen for types (no manual schema access)
+- Consume API endpoints
+- Write frontend tests
+- Ensure responsive design
+
+## Wave Activities
+- **Wave 1**: UI/UX planning, component design
+- **Wave 2**: Implementation, styling
+- **Wave 3**: Bug fixes, polish
+
+## Success Criteria
+- UI matches design specifications
+- Components are reusable
+- Responsive on all devices
+EOF
+
+    # Database Agent
+    cat > "${agents_dir}/db-agent.md" << 'EOF'
+# Database Agent
+
+## Responsibilities
+- Own database schema modifications
+- Write migrations (up/down)
+- Optimize queries
+- Set up indexes and constraints
+- Document schema changes
+
+## Wave Activities
+- **Wave 1**: Schema design, migration planning
+- **Wave 2**: Migration implementation, testing
+- **Wave 3**: Query optimization, refinement
+
+## Success Criteria
+- Schema is normalized and efficient
+- Migrations are reversible
+- Queries are optimized
+EOF
+
+    # QA Agent
+    cat > "${agents_dir}/qa-agent.md" << 'EOF'
+# QA Agent
+
+## Responsibilities
+- **Wave 1**: Write test specs and test plan
+- **Wave 3**: Execute tests, file bug reports
+- Verify acceptance criteria
+- Measure test coverage
+- Perform exploratory testing
+
+## Wave Activities
+- **Wave 1**: Test planning, test case writing
+- **Wave 2**: (idle - tests not ready yet)
+- **Wave 3**: Test execution, bug reporting
+
+## Success Criteria
+- Test plan covers all requirements
+- Tests are automated where possible
+- Coverage meets targets (80%+)
+EOF
+
+    # DevOps Agent
+    cat > "${agents_dir}/devops-agent.md" << 'EOF'
+# DevOps Agent
+
+## Responsibilities
+- Set up CI/CD pipelines
+- Configure infrastructure (Docker, etc.)
+- Manage deployment pipelines
+- Set up monitoring and logging
+- Handle production deployments
+
+## Wave Activities
+- **Wave 1**: Infrastructure planning
+- **Wave 2**: Pipeline implementation
+- **Wave 3**: Deployment, monitoring setup
+
+## Success Criteria
+- CI/CD pipeline is automated
+- Deployments are safe and reversible
+- Monitoring covers critical metrics
+EOF
+
+    # Review Agent
+    cat > "${agents_dir}/review-agent.md" << 'EOF'
+# Review Agent
+
+## Responsibilities
+- Review all code changes
+- Check for security vulnerabilities
+- Ensure code follows best practices
+- Verify tests are adequate
+- Approve/reject pull requests
+
+## Wave Activities
+- **All Waves**: Continuous review
+
+## Success Criteria
+- No security vulnerabilities in merged code
+- Code follows style guidelines
+- Tests are comprehensive
+EOF
+
+    log_info "Agent definitions created"
+}
+
+#-------------------------------------------------------------------------------
+# 12. Pipeline State Files
+#-------------------------------------------------------------------------------
+create_pipeline_state() {
+    log_step "Creating pipeline state files..."
+
+    local goclaw_dir="${PROJECT_ROOT}/.goclaw"
+
+    # Create pipeline-state.json
+    cat > "${goclaw_dir}/pipeline-state.json" << 'EOF'
+{
+  "version": "1.0",
+  "status": "idle",
+  "current_sprint": null,
+  "agents": {
+    "po": "idle",
+    "techlead": "idle",
+    "orchestrator": "idle",
+    "be": "idle",
+    "fe": "idle",
+    "db": "idle",
+    "qa": "idle",
+    "devops": "idle",
+    "review": "idle"
+  },
+  "circuit_breaker": {
+    "trips": 0,
+    "max_retries": 3
+  }
+}
+EOF
+
+    # Create agent-responsibilities.json
+    cat > "${goclaw_dir}/agent-responsibilities.json" << 'EOF'
+{
+  "version": "1.0",
+  "agents": {
+    "po": {
+      "name": "Product Owner",
+      "waves": ["1", "2", "3"],
+      "responsibilities": [
+        "Gather requirements",
+        "Write PRD",
+        "Create user stories",
+        "Prioritize backlog",
+        "Accept completed work"
+      ]
+    },
+    "techlead": {
+      "name": "Technical Lead",
+      "waves": ["1", "2", "3"],
+      "responsibilities": [
+        "Review technical feasibility",
+        "Architecture decisions",
+        "Coordinate agents",
+        "Code review"
+      ]
+    },
+    "orchestrator": {
+      "name": "Orchestrator",
+      "waves": ["1", "2", "3"],
+      "responsibilities": [
+        "Coordinate all agents",
+        "Manage dependencies",
+        "Monitor circuit breaker",
+        "Handle failures"
+      ]
+    },
+    "be": {
+      "name": "Backend",
+      "waves": ["1", "2", "3"],
+      "responsibilities": [
+        "Implement business logic",
+        "Consume schema (read-only)",
+        "Create API endpoints",
+        "Write tests"
+      ]
+    },
+    "fe": {
+      "name": "Frontend",
+      "waves": ["1", "2", "3"],
+      "responsibilities": [
+        "Implement UI",
+        "Use codegen for types",
+        "Consume API",
+        "Write frontend tests"
+      ]
+    },
+    "db": {
+      "name": "Database",
+      "waves": ["1", "2", "3"],
+      "responsibilities": [
+        "Own schema modifications",
+        "Write migrations",
+        "Optimize queries",
+        "Document schema"
+      ]
+    },
+    "qa": {
+      "name": "QA",
+      "waves": ["1", "3"],
+      "responsibilities": [
+        "Wave 1: Write test specs",
+        "Wave 3: Execute tests",
+        "File bug reports",
+        "Measure coverage"
+      ]
+    },
+    "devops": {
+      "name": "DevOps",
+      "waves": ["1", "2", "3"],
+      "responsibilities": [
+        "Set up CI/CD",
+        "Configure infrastructure",
+        "Manage deployments",
+        "Set up monitoring"
+      ]
+    },
+    "review": {
+      "name": "Review",
+      "waves": ["1", "2", "3"],
+      "responsibilities": [
+        "Review code changes",
+        "Check security",
+        "Ensure best practices",
+        "Approve/reject PRs"
+      ]
+    }
+  },
+  "rules": {
+    "database_ownership": "DB agent owns all schema modifications",
+    "backend_db_access": "BE consumes schema read-only via codegen",
+    "frontend_types": "FE uses codegen for types, no direct schema access",
+    "qa_wave2_idle": "QA agent is idle during Wave 2",
+    "review_continuous": "Review agent reviews all changes continuously"
+  }
+}
+EOF
+
+    log_info "Pipeline state files created"
+}
+
+#-------------------------------------------------------------------------------
+# 13. Environment File Template
+#-------------------------------------------------------------------------------
+create_env_template() {
+    log_step "Creating environment file template..."
+
+    local env_example="${PROJECT_ROOT}/.env.example"
+
+    cat > "$env_example" << 'EOF'
+# === LLM PROVIDERS ===
+OPENAI_API_KEY=           # For Codex gpt-5.4 (main agents)
+MINIMAX_API_KEY=          # For orchestrator + review agent (cheap)
+
+# === COMMUNICATION ===
+TELEGRAM_BOT_TOKEN=       # BotFather token
+TELEGRAM_CHAT_ID=         # Your personal chat ID
+
+# === GITHUB ===
+GITHUB_TOKEN=             # Fine-grained PAT: repo + issues + PRs + discussions
+GITHUB_REPO=              # e.g. username/repo-name
+
+# === INFRASTRUCTURE ===
+REDIS_URL=redis://localhost:6379
+GOCLAW_PORT=18789
+
+# === PIPELINE CONFIG ===
+MAX_SPRINT_HOURS=4
+MAX_AGENT_RETRIES=3
+AUTO_MERGE=true
+STAGING_URL=
+EOF
+
+    # Add .env to .gitignore
+    local gitignore="${PROJECT_ROOT}/.gitignore"
+    if [[ -f "$gitignore" ]]; then
+        grep -q "^\.env$" "$gitignore" || echo ".env" >> "$gitignore"
+    fi
+
+    log_info "Environment template created: .env.example"
+}
+
+#-------------------------------------------------------------------------------
+# 14. Helper Scripts
+#-------------------------------------------------------------------------------
+create_helper_scripts() {
+    log_step "Creating helper scripts..."
+
+    local scripts_dir="${PROJECT_ROOT}/scripts"
+
+    # start-pipeline.sh
+    cat > "${scripts_dir}/start-pipeline.sh" << 'EOF'
+#!/bin/bash
+# Start Pipeline - Start GoClaw and Redis services
+
+set -euo pipefail
+
+echo "Starting pipeline services..."
+
+# Start Redis
+if ! systemctl is-active --quiet redis-server; then
+    echo "Starting Redis..."
+    sudo systemctl start redis-server
+else
+    echo "Redis already running"
+fi
+
+# Start GoClaw
+echo "Starting GoClaw..."
+docker-compose -f /root/docker-compose.goclaw.yml up -d
+
+# Show status
+echo ""
+echo "=========================================="
+echo "Pipeline Services Status"
+echo "=========================================="
+echo "Redis: $(systemctl is-active redis-server)"
+echo "GoClaw: $(docker ps --filter 'name=goclaw-pipeline' --format '{{.Status}}')"
+echo ""
+echo "GoClaw Dashboard: http://localhost:18789"
+echo "=========================================="
+EOF
+
+    # stop-pipeline.sh
+    cat > "${scripts_dir}/stop-pipeline.sh" << 'EOF'
+#!/bin/bash
+# Stop Pipeline - Stop GoClaw and optionally Redis
+
+set -euo pipefail
+
+echo "Stopping pipeline services..."
+
+# Stop GoClaw
+echo "Stopping GoClaw..."
+docker-compose -f /root/docker-compose.goclaw.yml down
+
+# Ask about Redis
+read -p "Stop Redis too? (y/N): " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo "Stopping Redis..."
+    sudo systemctl stop redis-server
+else
+    echo "Redis left running"
+fi
+
+# Clean up worktrees
+read -p "Clean up git worktrees? (y/N): " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo "Cleaning up worktrees..."
+    git worktree list | grep agent | awk '{print $1}' | xargs -r git worktree remove
+    echo "Worktrees cleaned"
+fi
+EOF
+
+    # status.sh
+    cat > "${scripts_dir}/status.sh" << 'EOF'
+#!/bin/bash
+# Pipeline Status - Show all running agents and pipeline state
+
+set -euo pipefail
+
+echo "=========================================="
+echo "Pipeline Status"
+echo "=========================================="
+echo ""
+
+# Redis status
+echo "Redis:"
+if systemctl is-active --quiet redis-server; then
+    echo "  Status: Running ✓"
+else
+    echo "  Status: Stopped ✗"
+fi
+echo ""
+
+# GoClaw status
+echo "GoClaw:"
+if docker ps --filter 'name=goclaw-pipeline' --format '{{.Names}}' | grep -q goclaw-pipeline; then
+    echo "  Status: Running ✓"
+    echo "  Port: 18789"
+    echo "  URL: http://localhost:18789"
+else
+    echo "  Status: Stopped ✗"
+fi
+echo ""
+
+# Pipeline state
+echo "Pipeline State:"
+if [ -f .goclaw/pipeline-state.json ]; then
+    jq '.' .goclaw/pipeline-state.json 2>/dev/null || cat .goclaw/pipeline-state.json
+else
+    echo "  No pipeline state found"
+fi
+echo ""
+
+# Git worktrees
+echo "Git Worktrees:"
+git worktree list 2>/dev/null || echo "  No worktrees found"
+echo ""
+
+# GitHub issues (if gh is authenticated)
+echo "GitHub Issues (if authenticated):"
+if gh auth status &>/dev/null; then
+    gh issue list --state open 2>/dev/null || echo "  No issues found"
+else
+    echo "  GitHub CLI not authenticated"
+fi
+echo ""
+EOF
+
+    # sprint.sh
+    cat > "${scripts_dir}/sprint.sh" << 'EOF'
+#!/bin/bash
+# Sprint Trigger - Trigger a new sprint with PRD
+
+set -euo pipefail
+
+# Check for .env file
+if [ ! -f .env ]; then
+    echo "Error: .env file not found!"
+    echo "Please create .env from .env.example and fill in your API keys."
+    exit 1
+fi
+
+# Source .env
+set -a
+source .env
+set +a
+
+# Validate required vars
+required_vars=("OPENAI_API_KEY" "TELEGRAM_BOT_TOKEN" "TELEGRAM_CHAT_ID")
+missing_vars=()
+
+for var in "${required_vars[@]}"; do
+    if [ -z "${!var:-}" ]; then
+        missing_vars+=("$var")
+    fi
+done
+
+if [ ${#missing_vars[@]} -ne 0 ]; then
+    echo "Error: Missing required environment variables:"
+    printf '  - %s\n' "${missing_vars[@]}"
+    exit 1
+fi
+
+# Get PRD
+if [ $# -eq 0 ]; then
+    echo "Enter PRD (Ctrl+D when done):"
+    prd=$(cat)
+else
+    prd="$*"
+fi
+
+if [ -z "$prd" ]; then
+    echo "Error: PRD cannot be empty"
+    exit 1
+fi
+
+# Trigger sprint
+echo "Triggering sprint..."
+echo "PRD: $prd"
+echo ""
+
+# POST to GoClaw API
+curl -X POST http://localhost:${GOCLAW_PORT:-18789}/api/sprint \
+  -H "Content-Type: application/json" \
+  -d "{\"prd\": \"$prd\"}" \
+  2>/dev/null || echo "Failed to trigger sprint - is GoClaw running?"
+
+echo ""
+echo "Sprint triggered! Check Telegram for notifications."
+EOF
+
+    # tmux-layout.sh
+    cat > "${scripts_dir}/tmux-layout.sh" << 'EOF'
+#!/bin/bash
+# Tmux Layout - Launch pipeline monitoring tmux session
+
+SESSION_NAME="pipeline"
+
+# Check if session already exists
+if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    echo "Session '$SESSION_NAME' already exists. Attaching..."
+    tmux attach-session -t "$SESSION_NAME"
+    exit 0
+fi
+
+echo "Creating tmux session: $SESSION_NAME"
+
+# Create session and windows
+tmux new-session -d -s "$SESSION_NAME" -n "monitor"
+
+# Window 1: Monitor (2 panes)
+tmux split-window -t "$SESSION_NAME:monitor" -h
+tmux select-pane -t "$SESSION_NAME:monitor.0"
+tmux send-keys -t "$SESSION_NAME:monitor.0" "watch -n 2 'cat .goclaw/pipeline-state.json | jq .'" C-m
+tmux select-pane -t "$SESSION_NAME:monitor.1"
+tmux send-keys -t "$SESSION_NAME:monitor.1" "docker logs -f goclaw-pipeline" C-m
+
+# Window 2: Agents (4 panes)
+tmux new-window -t "$SESSION_NAME" -n "agents"
+tmux split-window -t "$SESSION_NAME:agents" -h
+tmux split-window -t "$SESSION_NAME:agents" -v
+tmux select-pane -t "$SESSION_NAME:agents.0"
+tmux split-window -t "$SESSION_NAME:agents.0" -v
+tmux select-pane -t "$SESSION_NAME:agents.3"
+tmux split-window -t "$SESSION_NAME:agents.3" -v
+
+# Label agent panes
+tmux send-keys -t "$SESSION_NAME:agents.0" "# BE agent logs" C-m
+tmux send-keys -t "$SESSION_NAME:agents.1" "# FE agent logs" C-m
+tmux send-keys -t "$SESSION_NAME:agents.2" "# DB agent logs" C-m
+tmux send-keys -t "$SESSION_NAME:agents.3" "# QA agent logs" C-m
+
+# Window 3: Git
+tmux new-window -t "$SESSION_NAME" -n "git"
+tmux send-keys -t "$SESSION_NAME:git" "watch -n 5 'git worktree list && echo \"---\" && git branch -a | grep agent'" C-m
+
+# Window 4: Shell
+tmux new-window -t "$SESSION_NAME" -n "shell"
+tmux send-keys -t "$SESSION_NAME:shell" "# Free shell for manual commands" C-m
+
+# Select first window
+tmux select-window -t "$SESSION_NAME:monitor"
+
+echo "Session '$SESSION_NAME' created!"
+echo "Windows: monitor, agents, git, shell"
+echo "Attach with: tmux attach-session -t $SESSION_NAME"
+
+# Attach to session
+tmux attach-session -t "$SESSION_NAME"
+EOF
+
+    # Make all scripts executable
+    chmod +x "${scripts_dir}"/*.sh
+
+    log_info "Helper scripts created and made executable"
+}
+
+#-------------------------------------------------------------------------------
+# 15. Start Services
 #-------------------------------------------------------------------------------
 start_services() {
     log_step "Starting services..."
@@ -399,7 +1051,131 @@ start_services() {
     # Note: GoClaw is not started automatically because it needs API keys
     log_info "Services started (Redis)"
     log_warn "GoClaw not started - configure .env first, then run:"
-    log_warn "  docker-compose -f /root/docker-compose.goclaw.yml up -d"
+    log_warn "  ./scripts/start-pipeline.sh"
+}
+
+#-------------------------------------------------------------------------------
+# 16. Final Verification
+#-------------------------------------------------------------------------------
+verify_installation() {
+    echo ""
+    log_info "=========================================="
+    log_info "Verifying Installation"
+    log_info "=========================================="
+    echo ""
+
+    local all_good=true
+
+    # Check tmux
+    if command -v tmux &>/dev/null; then
+        check_pass "tmux ($(tmux -V | awk '{print $2}'))"
+    else
+        check_fail "tmux not installed"
+        all_good=false
+    fi
+
+    # Check node
+    if command -v node &>/dev/null; then
+        local node_ver="$(node --version)"
+        if [[ "$node_ver" =~ v2[2-9] ]]; then
+            check_pass "node ($node_ver)"
+        else
+            check_warn "node ($node_ver) - should be v22+"
+        fi
+    else
+        check_fail "node not installed"
+        all_good=false
+    fi
+
+    # Check claude
+    if command -v claude &>/dev/null; then
+        check_pass "claude (installed)"
+    else
+        check_fail "claude not installed"
+        all_good=false
+    fi
+
+    # Check happy
+    if command -v happy &>/dev/null; then
+        check_pass "happy-coder (installed)"
+    else
+        check_fail "happy-coder not installed"
+        all_good=false
+    fi
+
+    # Check codex
+    if command -v codex &>/dev/null; then
+        check_pass "codex (installed)"
+    else
+        check_fail "codex not installed"
+        all_good=false
+    fi
+
+    # Check docker
+    if command -v docker &>/dev/null && docker info &>/dev/null; then
+        check_pass "docker (running)"
+    else
+        check_fail "docker not running"
+        all_good=false
+    fi
+
+    # Check goclaw image
+    if docker images | grep -q "nextlevelbuilder/goclaw"; then
+        check_pass "goclaw (image pulled)"
+    else
+        check_fail "goclaw image not found"
+        all_good=false
+    fi
+
+    # Check gh
+    if command -v gh &>/dev/null; then
+        if gh auth status &>/dev/null; then
+            check_pass "gh (authenticated)"
+        else
+            check_warn "gh (needs authentication)"
+        fi
+    else
+        check_fail "gh not installed"
+        all_good=false
+    fi
+
+    # Check redis
+    if systemctl is-active --quiet redis-server; then
+        check_pass "redis (running)"
+    else
+        check_fail "redis not running"
+        all_good=false
+    fi
+
+    # Check .env.example
+    if [ -f .env.example ]; then
+        check_pass ".env.example exists"
+    else
+        check_fail ".env.example not found"
+        all_good=false
+    fi
+
+    # Check scripts
+    if [ -d scripts ] && [ -x scripts/start-pipeline.sh ]; then
+        check_pass "scripts (executable)"
+    else
+        check_fail "scripts not executable"
+        all_good=false
+    fi
+
+    # Check .gitignore
+    if [ -f .gitignore ] && grep -q "^\.env$" .gitignore; then
+        check_pass ".gitignore has .env"
+    else
+        check_warn ".gitignore missing .env"
+    fi
+
+    echo ""
+    if [ "$all_good" = true ]; then
+        log_info "✅ All checks passed!"
+    else
+        log_warn "⚠️  Some checks failed - review above"
+    fi
 }
 
 #-------------------------------------------------------------------------------
@@ -408,42 +1184,29 @@ start_services() {
 print_summary() {
     echo ""
     log_info "=========================================="
-    log_info "GoClaw Development Environment Setup Complete"
+    log_info "PIPELINE SETUP COMPLETE"
     log_info "=========================================="
     echo ""
-    echo "Installed Components:"
-    echo "  ✓ tmux, git, curl, wget, jq"
-    echo "  ✓ redis-server"
-    echo "  ✓ postgresql-client"
-    echo "  ✓ build-essential"
-    echo "  ✓ fnm (Node.js version manager)"
-    echo "  ✓ Node.js ${NODE_VERSION}"
-    echo "  ✓ Claude Code CLI"
-    echo "  ✓ Happy-Coder CLI"
-    echo "  ✓ OpenAI Codex CLI"
-    echo "  ✓ GoClaw (Docker)"
-    echo "  ✓ GitHub CLI (gh)"
+    echo "NEXT STEPS:"
     echo ""
-    echo "Next Steps:"
-    echo "  1. Configure GoClaw environment:"
-    echo "     cp /root/.env.goclaw.template /root/.env"
-    echo "     # Edit /root/.env with your API keys"
+    echo "1. Configure environment:"
+    echo "   cp .env.example .env"
+    echo "   # Edit .env with your API keys"
     echo ""
-    echo "  2. Start GoClaw:"
-    echo "     docker-compose -f /root/docker-compose.goclaw.yml up -d"
+    echo "2. Start the pipeline:"
+    echo "   ./scripts/start-pipeline.sh"
     echo ""
-    echo "  3. Authenticate GitHub CLI:"
-    echo "     gh auth login"
+    echo "3. Launch monitoring dashboard:"
+    echo "   ./scripts/tmux-layout.sh"
     echo ""
-    echo "  4. For regular user ($USERNAME):"
-    echo "     su - $USERNAME"
-    echo "     fnm use ${NODE_VERSION}"
+    echo "4. Trigger a sprint:"
+    echo "   ./scripts/sprint.sh \"Your PRD here\""
     echo ""
-    echo "Quick Commands:"
-    echo "  • claude        - Start Claude Code"
-    echo "  • happy         - Start Happy-Coder (mobile-enabled)"
-    echo "  • happy codex   - Start Codex session"
-    echo "  • tmux          - Start terminal multiplexer"
+    echo "=========================================="
+    echo ""
+    log_info "Quick command to launch tmux layout:"
+    echo ""
+    echo "  ./scripts/tmux-layout.sh"
     echo ""
 }
 
@@ -461,8 +1224,13 @@ main() {
     install_goclaw
     install_gh_cli
     setup_user_environment
+    create_pipeline_structure
+    create_agent_definitions
+    create_pipeline_state
     create_env_template
+    create_helper_scripts
     start_services
+    verify_installation
     print_summary
 }
 
