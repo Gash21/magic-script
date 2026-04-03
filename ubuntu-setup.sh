@@ -250,6 +250,35 @@ setup_ssh_keys() {
     chmod 600 "$authorized_keys"
     chown "$USERNAME:$USERNAME" "$authorized_keys"
 
+    # Check if authorized_keys is empty, if so, prompt for SSH key
+    if [[ ! -s "$authorized_keys" ]]; then
+        echo ""
+        echo "=========================================="
+        echo "SSH Public Key Setup"
+        echo "=========================================="
+        echo "Paste your SSH public key below (or press Enter to skip):"
+        echo "You can find your public key in: ~/.ssh/id_rsa.pub or ~/.ssh/id_ed25519.pub"
+        echo ""
+        read -p "SSH public key: " ssh_public_key
+
+        # Validate and add the key if provided
+        if [[ -n "$ssh_public_key" ]]; then
+            # Basic validation: check if it looks like an SSH public key
+            if [[ "$ssh_public_key" =~ ^(ssh-rsa|ssh-ed25519|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521) ]]; then
+                echo "$ssh_public_key" >> "$authorized_keys"
+                log_info "SSH public key added to authorized_keys"
+            else
+                log_warn "Invalid SSH public key format (should start with ssh-rsa, ssh-ed25519, etc.)"
+                log_warn "You'll need to manually add your key later to: $authorized_keys"
+            fi
+        else
+            log_warn "No SSH key provided - password authentication will remain enabled"
+            log_warn "Add your SSH key later to: $authorized_keys"
+        fi
+    else
+        log_info "SSH keys already exist in authorized_keys - skipping prompt"
+    fi
+
     log_info "SSH directory configured at '$ssh_dir'"
 }
 
@@ -538,8 +567,8 @@ print_summary() {
     echo "SSH:        Root login disabled, password auth enabled (add keys to disable)"
     echo ""
     echo "Next steps:"
-    echo "  1. Add your SSH public key to: /home/$USERNAME/.ssh/authorized_keys"
-    echo "  2. After adding keys, optionally disable password auth:"
+    echo "  1. Test SSH access: ssh $USERNAME@$(hostname -I | awk '{print $1}')"
+    echo "  2. If SSH works, optionally disable password auth:"
     echo "     sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config"
     echo "     sudo systemctl restart ssh"
     echo "  3. Switch to user:  su - $USERNAME"
