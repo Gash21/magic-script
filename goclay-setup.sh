@@ -89,13 +89,30 @@ install_fnm() {
     # Install fnm
     curl -fsSL https://fnm.vercel.app/install | bash
 
-    # Make fnm available for root
+    # Make fnm available immediately in current session
     export PATH="/root/.local/share/fnm:$PATH"
+
+    # Source fnm environment in current shell
     if [[ -f "/root/.local/share/fnm/fnm" ]]; then
-        # Add fnm to .bashrc for future sessions
-        grep -q "fnm env" /root/.bashrc 2>/dev/null || echo 'export PATH="/root/.local/share/fnm:$PATH"' >> /root/.bashrc
-        grep -q "fnm env" /root/.bashrc 2>/dev/null || echo 'eval "$(fnm env --use-on-cd)"' >> /root/.bashrc
-        log_info "fnm installed and added to .bashrc"
+        eval "$("/root/.local/share/fnm/fnm" env --shell bash)"
+
+        # Add fnm to .bashrc for future Bash sessions
+        grep -q "fnm env" /root/.bashrc 2>/dev/null || {
+            echo "" >> /root/.bashrc
+            echo "# fnm - Fast Node Manager" >> /root/.bashrc
+            echo 'export PATH="/root/.local/share/fnm:$PATH"' >> /root/.bashrc
+            echo 'eval "$(fnm env --use-on-cd)"' >> /root/.bashrc
+        }
+
+        # Add fnm to .zshrc for future Zsh sessions
+        grep -q "fnm env" /root/.zshrc 2>/dev/null || {
+            echo "" >> /root/.zshrc
+            echo "# fnm - Fast Node Manager" >> /root/.zshrc
+            echo 'export PATH="/root/.local/share/fnm:$PATH"' >> /root/.zshrc
+            echo 'eval "$(fnm env --use-on-cd)"' >> /root/.zshrc
+        }
+
+        log_info "fnm installed and added to .bashrc and .zshrc"
     else
         log_error "fnm installation failed"
         return 1
@@ -108,8 +125,13 @@ install_fnm() {
 install_nodejs() {
     log_step "Installing Node.js ${NODE_VERSION} via fnm..."
 
-    # Ensure fnm is in PATH
+    # Ensure fnm is in PATH and sourced
     export PATH="/root/.local/share/fnm:$PATH"
+
+    # Source fnm environment if not already loaded
+    if [[ -f "/root/.local/share/fnm/fnm" ]]; then
+        eval "$("/root/.local/share/fnm/fnm" env --shell bash)" 2>/dev/null || true
+    fi
 
     if ! command -v fnm &>/dev/null; then
         log_error "fnm not found - cannot install Node.js"
@@ -119,10 +141,10 @@ install_nodejs() {
     # Install Node.js 22
     fnm install "${NODE_VERSION}" 2>/dev/null || log_warn "Node.js ${NODE_VERSION} already installed"
 
-    # Use Node.js 22
+    # Use Node.js 22 in current session
     fnm use "${NODE_VERSION}"
 
-    # Set as default
+    # Set as default for all new sessions
     fnm default "${NODE_VERSION}"
 
     # Verify installation
@@ -348,24 +370,25 @@ setup_user_environment() {
     local bashrc="${user_home}/.bashrc"
     local zshrc="${user_home}/.zshrc"
 
-    # Add fnm to PATH in user's shell config
+    # Install fnm for the regular user if not already installed
+    if [[ ! -d "${user_home}/.local/share/fnm" ]]; then
+        log_info "Installing fnm for user ${USERNAME}..."
+        su - "$USERNAME" -c 'curl -fsSL https://fnm.vercel.app/install | bash' || true
+    fi
+
+    # Add fnm to PATH in user's shell configs (both .bashrc and .zshrc)
     for shell_config in "$zshrc" "$bashrc"; do
         if [[ -f "$shell_config" ]]; then
             grep -q "fnm env" "$shell_config" 2>/dev/null || {
                 echo "" >> "$shell_config"
                 echo "# fnm - Fast Node Manager" >> "$shell_config"
-                echo 'export PATH="/home/'"$USERNAME"'/.local/share/fnm:$PATH"' >> "$shell_config"
+                echo "export PATH=\"${user_home}/.local/share/fnm:\$PATH\"" >> "$shell_config"
                 echo 'eval "$(fnm env --use-on-cd)"' >> "$shell_config"
             }
         fi
     done
 
-    # Install fnm for the regular user too
-    if [[ ! -d "${user_home}/.local/share/fnm" ]]; then
-        su - "$USERNAME" -c 'curl -fsSL https://fnm.vercel.app/install | bash' || true
-    fi
-
-    log_info "User environment configured"
+    log_info "User environment configured for ${USERNAME}"
 }
 
 #-------------------------------------------------------------------------------
