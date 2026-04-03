@@ -1040,7 +1040,265 @@ EOF
 }
 
 #-------------------------------------------------------------------------------
-# 15. Start Services
+# 15. VS Code Dev Container
+#-------------------------------------------------------------------------------
+create_devcontainer() {
+    log_step "Creating VS Code Dev Container configuration..."
+
+    local devcontainer_dir="${PROJECT_ROOT}/.devcontainer"
+    mkdir -p "$devcontainer_dir"
+
+    # Create devcontainer.json
+    cat > "${devcontainer_dir}/devcontainer.json" << 'EOF'
+{
+  "name": "GoClaw Pipeline Development",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspace",
+
+  // Features to add to the dev container
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22",
+      "nodeGypDependencies": true,
+      "nvmInstallPath": "/usr/local/share/nvm"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "moby": true,
+      "dockerDashComposeVersion": "v2.23.0"
+    },
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "installOhMyZsh": true,
+      "upgradePackages": true,
+      "username": "vscode",
+      "userUid": "automatic",
+      "userGid": "automatic"
+    },
+    "ghcr.io/devcontainers/features/git:1": {
+      "version": "latest",
+      "ppa": true
+    }
+  },
+
+  // Use 'forwardPorts' to make a list of ports inside the container available locally
+  "forwardPorts": [18789, 6379],
+
+  // Port attributes
+  "portsAttributes": {
+    "18789": {
+      "label": "GoClaw API",
+      "onAutoForward": "notify"
+    },
+    "6379": {
+      "label": "Redis",
+      "onAutoForward": "silent"
+    }
+  },
+
+  // Use 'postCreateCommand' to run commands after the container is created
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  // Configure tool-specific properties
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-azuretools.vscode-docker",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-vscode.vscode-typescript-next",
+        "GitHub.copilot",
+        "GitHub.vscode-pull-request-github",
+        "ms-vscode.live-server",
+        "humao.rest-client",
+        "tomoki1207.pdf",
+        "zh9528.format-code-in-markdown",
+        "eamodio.gitlens",
+        "streetsidesoftware.code-spell-checker",
+        "VisualStudioExptTeam.vscodeintellicode"
+      ],
+      "settings": {
+        "terminal.integrated.profiles.linux": {
+          "zsh": {
+            "path": "/bin/zsh"
+          }
+        },
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
+        }
+      }
+    }
+  },
+
+  // Uncomment to connect as root instead
+  "remoteUser": "vscode",
+
+  // Mounts
+  "mounts": [
+    "source=${localWorkspaceFolder}/.goclaw,target=/workspace/.goclaw,type=bind,consistency=cached",
+    "source=${localWorkspaceFolder}/.agent-context,target=/workspace/.agent-context,type=bind,consistency=cached",
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+  ],
+
+  // Run arguments
+  "runArgs": [
+    "--cap-add=SYS_PTRACE",
+    "--security-opt", "seccomp=unconfined"
+  ],
+
+  // Lifecycle scripts
+  "onCreateCommand": "echo '🚀 Creating GoClaw development container...'",
+  "updateContentCommand": "echo '📦 Updating dependencies...'",
+  "postAttachCommand": "echo '✅ Container ready! Run ./scripts/start-pipeline.sh to start services'"
+}
+EOF
+
+    # Create Dockerfile for the app service
+    cat > "${devcontainer_dir}/Dockerfile" << 'EOF'
+FROM mcr.microsoft.com/devcontainers/base:ubuntu
+
+# Install basic tools
+RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+    && apt-get install -y \
+    curl \
+    wget \
+    git \
+    tmux \
+    jq \
+    redis-tools \
+    postgresql-client \
+    build-essential \
+    unzip \
+    vim \
+    zsh \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install fnm (Fast Node Manager)
+RUN curl -fsSL https://fnm.vercel.app/install | bash
+ENV PATH="/root/.local/share/fnm:${PATH}"
+RUN fnm install 22 && fnm use 22 && fnm default 22
+
+# Install global npm packages
+RUN npm install -g \
+    @anthropic-ai/claude-code \
+    happy-coder \
+    @openai/codex
+
+# Install GitHub CLI
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y gh
+
+# Set up workspace directory
+WORKDIR /workspace
+
+# Set default shell to zsh
+SHELL ["/bin/zsh", "-c"]
+CMD ["/bin/zsh"]
+EOF
+
+    # Create docker-compose.yml for dev container
+    cat > "${devcontainer_dir}/docker-compose.yml" << 'EOF'
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ../..:/workspaces/goclaw-pipeline:cached
+    command: sleep infinity
+    network_mode: service:goclaw
+
+  goclaw:
+    image: ghcr.io/nextlevelbuilder/goclaw:full
+    container_name: goclaw-pipeline
+    restart: unless-stopped
+    ports:
+      - "18789:18789"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - GOCLAW_OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GOCLAW_MINIMAX_API_KEY=${MINIMAX_API_KEY:-}
+      - GOCLAW_TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - GOCLAW_TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+    env_file:
+      - ../.env
+
+  redis:
+    image: redis:7-alpine
+    container_name: goclaw-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:
+EOF
+
+    # Create post-create script
+    cat > "${devcontainer_dir}/post-create.sh" << 'EOF'
+#!/bin/bash
+set -euo pipefail
+
+echo "🎯 Running post-create setup..."
+
+# Ensure fnm is in PATH
+export PATH="${HOME}/.local/share/fnm:${PATH}"
+
+# Verify installations
+echo "✅ Node version: $(node --version)"
+echo "✅ npm version: $(npm --version)"
+echo "✅ Claude Code: $(claude --version || echo 'not installed')"
+echo "✅ Happy-Coder: $(happy --version || echo 'not installed')"
+echo "✅ Codex: $(codex --version || echo 'not installed')"
+echo "✅ Docker: $(docker --version)"
+echo "✅ GitHub CLI: $(gh --version | head -n1 || echo 'not installed')"
+
+# Copy .env.example if .env doesn't exist
+if [ ! -f .env ] && [ -f .env.example ]; then
+    echo ""
+    echo "⚠️  Creating .env from .env.example - please add your API keys!"
+    cp .env.example .env
+fi
+
+echo ""
+echo "✅ Dev container setup complete!"
+echo ""
+echo "Next steps:"
+echo "  1. Edit .env with your API keys"
+echo "  2. Run: ./scripts/start-pipeline.sh"
+echo "  3. Open a new terminal and run: ./scripts/tmux-layout.sh"
+echo ""
+EOF
+
+    chmod +x "${devcontainer_dir}/post-create.sh"
+
+    # Create .devcontainer gitignore
+    cat > "${devcontainer_dir}/.gitignore" << 'EOF'
+# Ignore local environment overrides
+.env.local
+
+# Ignore any local workspace config
+*.code-workspace
+EOF
+
+    log_info "VS Code Dev Container configuration created"
+    log_info "Press F1 in VS Code and select 'Dev Containers: Reopen in Container'"
+}
+
+#-------------------------------------------------------------------------------
+# 16. Start Services
 #-------------------------------------------------------------------------------
 start_services() {
     log_step "Starting services..."
@@ -1170,6 +1428,13 @@ verify_installation() {
         check_warn ".gitignore missing .env"
     fi
 
+    # Check VS Code Dev Container
+    if [ -d .devcontainer ] && [ -f .devcontainer/devcontainer.json ]; then
+        check_pass "VS Code Dev Container (configured)"
+    else
+        check_warn "VS Code Dev Container (not found)"
+    fi
+
     echo ""
     if [ "$all_good" = true ]; then
         log_info "✅ All checks passed!"
@@ -1193,8 +1458,11 @@ print_summary() {
     echo "   cp .env.example .env"
     echo "   # Edit .env with your API keys"
     echo ""
-    echo "2. Start the pipeline:"
+    echo "2a. Start the pipeline (native):"
     echo "   ./scripts/start-pipeline.sh"
+    echo ""
+    echo "2b. OR use VS Code Dev Container:"
+    echo "   Press F1 → 'Dev Containers: Reopen in Container'"
     echo ""
     echo "3. Launch monitoring dashboard:"
     echo "   ./scripts/tmux-layout.sh"
@@ -1207,6 +1475,10 @@ print_summary() {
     log_info "Quick command to launch tmux layout:"
     echo ""
     echo "  ./scripts/tmux-layout.sh"
+    echo ""
+    log_info "VS Code Dev Container ready:"
+    echo ""
+    echo "  Press F1 → 'Dev Containers: Reopen in Container'"
     echo ""
 }
 
@@ -1229,6 +1501,7 @@ main() {
     create_pipeline_state
     create_env_template
     create_helper_scripts
+    create_devcontainer
     start_services
     verify_installation
     print_summary
