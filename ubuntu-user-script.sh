@@ -149,59 +149,167 @@ setup_ssh_keys() {
 install_oh_my_zsh() {
     log_step "Installing Oh-My-Zsh..."
 
-    # Check if zsh is available
+    # Step 1: Backup current .zshrc (always!)
+    if [ -f "$HOME/.zshrc" ]; then
+        log_info "Backing up current .zshrc..."
+        cp "$HOME/.zshrc" "$HOME/.zshrc.backup-$(date +%Y%m%d-%H%M%S)"
+        log_info "✓ .zshrc backed up"
+    fi
+
+    # Step 2: Make sure zsh is installed
     if ! command -v zsh >/dev/null 2>&1; then
-        log_error "zsh is not installed. Please run the system setup script first (as root)."
+        log_error "zsh is not installed."
+        log_error "Please run the system setup script first (as root):"
+        log_error "  sudo ./ubuntu-setup.sh"
         log_error "Or ask your admin to install zsh: sudo apt install zsh"
         exit 1
     fi
+    log_info "✓ zsh is installed"
 
-    # Verify git is available (required for Oh-My-Zsh)
+    # Step 3: Verify git is available (required for Oh-My-Zsh)
     if ! command -v git >/dev/null 2>&1; then
-        log_error "git is not installed. Please install git first."
+        log_error "git is not installed."
+        log_error "Please install git first: sudo apt install git"
+        exit 1
+    fi
+    log_info "✓ git is installed"
+
+    # Step 4: If Oh-My-Zsh is already installed, remove it for clean reinstall
+    if [ -d "$HOME/.oh-my-zsh" ]; then
+        log_warn "Oh-My-Zsh already installed. Removing for clean reinstall..."
+        rm -rf "$HOME/.oh-my-zsh"
+        log_info "✓ Old Oh-My-Zsh installation removed"
+    fi
+
+    # Step 5: Download and install Oh-My-Zsh
+    log_info "Downloading Oh-My-Zsh installation script..."
+
+    # Download and install oh-my-zsh using a non-interactive method
+    if command -v curl >/dev/null 2>&1; then
+        if ! curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh -o /tmp/install.sh; then
+            log_error "Failed to download Oh-My-Zsh installer with curl"
+            exit 1
+        fi
+    elif command -v wget >/dev/null 2>&1; then
+        if ! wget -q https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh -O /tmp/install.sh; then
+            log_error "Failed to download Oh-My-Zsh installer with wget"
+            exit 1
+        fi
+    else
+        log_error "Neither curl nor wget is available"
         exit 1
     fi
 
-    # Check if oh-my-zsh is already installed
+    # Run the installer in unattended mode
+    log_info "Running Oh-My-Zsh installer..."
+    if ! bash /tmp/install.sh --unattended --keep-zshrc; then
+        log_warn "Oh-My-Zsh installer failed, but continuing..."
+    fi
+
+    # Clean up
+    rm -f /tmp/install.sh
+
+    # Verify installation
     if [ -d "$HOME/.oh-my-zsh" ]; then
-        log_warn "Oh-My-Zsh already installed. Skipping installation."
+        log_info "✓ Oh-My-Zsh installed successfully"
     else
-        log_info "Downloading Oh-My-Zsh installation script..."
+        log_warn "Oh-My-Zsh installation may have failed - .oh-my-zsh directory not found"
+        log_warn "You can install it manually later:"
+        log_warn "  sh -c \"$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)\" \"\" --unattended"
+    fi
 
-        # Download and install oh-my-zsh using a non-interactive method
-        if command -v curl >/dev/null 2>&1; then
-            if ! curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh -o /tmp/install.sh; then
-                log_error "Failed to download Oh-My-Zsh installer with curl"
-                exit 1
+    # Set up .zshrc with sensible defaults
+    setup_zshrc
+
+    # Check if there's a pre-oh-my-zsh backup that needs merging
+    if [ -f "$HOME/.zshrc.pre-oh-my-zsh" ]; then
+        log_warn "Found .zshrc.pre-oh-my-zsh backup from Oh-My-Zsh installation"
+        printf ""
+        printf "${YELLOW}Oh-My-Zsh backed up your previous .zshrc configuration.${NC}\n"
+        printf "${YELLOW}Do you want to merge your old config with the new Oh-My-Zsh .zshrc? (y/n)${NC}\n"
+        read -r MERGE_CONFIG
+
+        if [ "$MERGE_CONFIG" = "y" ] || [ "$MERGE_CONFIG" = "Y" ]; then
+            log_info "Merging .zshrc.pre-oh-my-zsh into .zshrc..."
+
+            # Backup current .zshrc
+            cp "$HOME/.zshrc" "$HOME/.zshrc.before-merge"
+
+            # Extract aliases from backup
+            if grep -q "^alias " "$HOME/.zshrc.pre-oh-my-zsh"; then
+                ALIASES=$(grep "^alias " "$HOME/.zshrc.pre-oh-my-zsh")
+                cat >> "$HOME/.zshrc" << 'EOF'
+
+# Aliases merged from .zshrc.pre-oh-my-zsh
+EOF
+                echo "$ALIASES" >> "$HOME/.zshrc"
+                log_info "✓ Aliases merged"
             fi
-        elif command -v wget >/dev/null 2>&1; then
-            if ! wget -q https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh -O /tmp/install.sh; then
-                log_error "Failed to download Oh-My-Zsh installer with wget"
-                exit 1
+
+            # Extract environment variables from backup (excluding PATH)
+            EXPORTS=$(grep "^export " "$HOME/.zshrc.pre-oh-my-zsh" | grep -v "export PATH=")
+            if [ -n "$EXPORTS" ]; then
+                cat >> "$HOME/.zshrc" << 'EOF'
+
+# Environment variables merged from .zshrc.pre-oh-my-zsh
+EOF
+                echo "$EXPORTS" >> "$HOME/.zshrc"
+                log_info "✓ Environment variables merged"
             fi
+
+            # Extract custom functions from backup
+            if grep -q "^[a-zA-Z_][a-zA-Z0-9_]*() " "$HOME/.zshrc.pre-oh-my-zsh"; then
+                cat >> "$HOME/.zshrc" << 'EOF'
+
+# Functions merged from .zshrc.pre-oh-my-zsh
+EOF
+                grep "^[a-zA-Z_][a-zA-Z0-9_]*() " "$HOME/.zshrc.pre-oh-my-zsh" >> "$HOME/.zshrc"
+                log_info "✓ Functions merged"
+            fi
+
+            log_info "Merge completed. Backup saved as .zshrc.before-merge"
+            printf ""
+            printf "${YELLOW}If something went wrong, restore with: cp ~/.zshrc.before-merge ~/.zshrc${NC}\n"
         else
-            log_error "Neither curl nor wget is available"
-            exit 1
-        fi
-
-        # Run the installer in unattended mode
-        log_info "Running Oh-My-Zsh installer..."
-        if ! bash /tmp/install.sh --unattended --keep-zshrc; then
-            log_warn "Oh-My-Zsh installer failed, but continuing..."
-        fi
-
-        # Clean up
-        rm -f /tmp/install.sh
-
-        # Verify installation
-        if [ -d "$HOME/.oh-my-zsh" ]; then
-            log_info "Oh-My-Zsh installed successfully"
-        else
-            log_warn "Oh-My-Zsh installation may have failed - .oh-my-zsh directory not found"
-            log_warn "You can install it manually later:"
-            log_warn "  sh -c \"$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)\" \"\" --unattended"
+            log_info "Skipping merge. Your old config is preserved in .zshrc.pre-oh-my-zsh"
         fi
     fi
+}
+    log_info "Downloading Oh-My-Zsh installation script..."
+    
+          # Download and install oh-my-zsh using a non-interactive method
+          if command -v curl >/dev/null 2>&1; then
+              if ! curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh -o /tmp/install.sh; then
+                  log_error "Failed to download Oh-My-Zsh installer with curl"
+                  exit 1
+              fi
+          elif command -v wget >/dev/null 2>&1; then
+              if ! wget -q https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh -O /tmp/install.sh; then
+                  log_error "Failed to download Oh-My-Zsh installer with wget"
+                  exit 1
+              fi
+          else
+              log_error "Neither curl nor wget is available"
+              exit 1
+          fi
+
+          # Run the installer in unattended mode
+          log_info "Running Oh-My-Zsh installer..."
+          if ! bash /tmp/install.sh --unattended --keep-zshrc; then
+              log_warn "Oh-My-Zsh installer failed, but continuing..."
+          fi
+
+          # Clean up
+          rm -f /tmp/install.sh
+
+          # Verify installation
+          if [ -d "$HOME/.oh-my-zsh" ]; then
+              log_info "Oh-My-Zsh installed successfully"
+          else
+              log_warn "Oh-My-Zsh installation may have failed - .oh-my-zsh directory not found"
+              log_warn "You can install it manually later:"
+              log_warn "  sh -c \"$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)\" \"\" --unattended"
+          fi
 
     # Set up .zshrc with sensible defaults
     setup_zshrc
@@ -266,20 +374,25 @@ EOF
 # ============================================
 
 setup_zshrc() {
-    log_step "Configuring .zshrc..."
+    log_step "Configuring .zshrc with custom aliases and exports..."
 
     ZSHRC="$HOME/.zshrc"
+    MARKER="# === AUTO-CONFIGURED BY USER SETUP SCRIPT ==="
 
-    # Backup original .zshrc if it exists
-    if [ -f "$ZSHRC" ]; then
-        cp "$ZSHRC" "${ZSHRC}.bak"
+    # Check if our configuration is already added
+    if grep -q "$MARKER" "$ZSHRC" 2>/dev/null; then
+        log_warn "Custom configuration already exists in .zshrc. Skipping."
+        return
     fi
 
-    # Add useful configurations to .zshrc (if not already added)
-    if grep -q "# User configuration" "$ZSHRC" 2>/dev/null; then
-        log_warn "Custom zsh configuration already exists. Skipping .zshrc modification."
-    else
-        cat >> "$ZSHRC" << 'EOF'
+    log_info "Adding custom configuration to .zshrc..."
+
+    # Append our custom configuration
+    cat >> "$ZSHRC" << 'EOF'
+
+# === AUTO-CONFIGURED BY USER SETUP SCRIPT ===
+# This section contains aliases, exports, and settings configured by the setup script
+# Feel free to modify these settings to your preference
 
 # ============================================
 # FIX CORRUPTED COMPLETION CACHE
@@ -303,7 +416,7 @@ rm -f "$HOME/.zcompdump"* 2>/dev/null || true
 # Fix backspace, delete, arrow keys, and other terminal issues over SSH
 
 # Smart terminal detection - fall back to known-good terminals
-# This handles terminals like xterm-ghostty, wezterm, etc. that Ubuntu doesn't have
+# This handles terminals like xterm-ghostty, wezterm, etc.
 if ! infocmp "$TERM" >/dev/null 2>&1; then
     # Current TERM not available, try common alternatives in order of preference
     for term in xterm-256color xterm-color xterm vt100; do
@@ -340,12 +453,14 @@ zsh-line-init
 stty erase '^?' 2>/dev/null || true
 
 # ============================================
-# USER CONFIGURATION
+# ENVIRONMENT VARIABLES
 # ============================================
 export EDITOR=vim
 export VISUAL=vim
 
-# Add aliases
+# ============================================
+# DIRECTORY ALIASES
+# ============================================
 alias ll='ls -lah'
 alias la='ls -A'
 alias l='ls -CF'
@@ -353,7 +468,9 @@ alias ..='cd ..'
 alias ...='cd ../..'
 alias ~='cd ~'
 
-# Docker aliases
+# ============================================
+# DOCKER ALIASES
+# ============================================
 alias d='docker'
 alias dc='docker compose'
 alias dps='docker ps'
@@ -366,37 +483,55 @@ alias dcup='docker compose up -d'
 alias dcdown='docker compose down'
 alias dcps='docker compose ps'
 
-# Git aliases
+# ============================================
+# GIT ALIASES
+# ============================================
 alias gs='git status'
 alias ga='git add'
 alias gc='git commit'
 alias gp='git push'
 alias gl='git log --oneline --graph --decorate'
+alias gf='git fetch'
+alias gm='git merge'
+alias gb='git branch'
 
-# Tailscale aliases
+# ============================================
+# TAILSCALE ALIASES
+# ============================================
 alias ts='tailscale'
 alias tss='tailscale status'
 alias tsup='sudo tailscale up --advertise-routes=192.168.0.0/24 --accept-routes'
 alias tsdown='sudo tailscale down'
 
-# History configuration
+# ============================================
+# HISTORY CONFIGURATION
+# ============================================
 HISTSIZE=10000
 SAVEHIST=10000
 setopt SHARE_HISTORY
 setopt HIST_IGNORE_DUPS
 setopt HIST_IGNORE_SPACE
 
-# Completion
-autoload -Uz compinit
-compinit
-
+# ============================================
+# COMPLETION SETTINGS
+# ============================================
 # Better completion
 zstyle ':completion:*' menu select
 zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}'
+
+# Incremental completion
+zstyle ':completion:*' list-colors ''
+
+# ============================================
+# MISC SETTINGS
+# ============================================
+# Disable auto-menu (prevents some completion issues)
+setopt NO_AUTO_MENU
+
+# === END OF AUTO-CONFIGURED SECTION ===
 EOF
 
-        log_info ".zshrc configured successfully"
-    fi
+    log_info "✓ Custom configuration added to .zshrc"
 
     # Change default shell to zsh if not already
     CURRENT_SHELL=$(getent passwd "$USERNAME" | cut -d: -f7)
@@ -405,8 +540,10 @@ EOF
         if ! chsh -s /bin/zsh; then
             log_warn "Could not change shell automatically. Ask your admin to run: sudo chsh -s /bin/zsh $USERNAME"
         else
-            log_info "Default shell changed to zsh. Restart your session to apply."
+            log_info "✓ Default shell changed to zsh. Restart your session to apply."
         fi
+    else
+        log_info "✓ Default shell is already zsh"
     fi
 }
 
