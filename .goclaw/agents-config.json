@@ -1,11 +1,11 @@
 {
   "version": "1.0",
-  "default_provider": "minimax",
+  "default_provider": "minimax-token",
   "agents": {
     "po": {
       "name": "Product Owner",
-      "provider": "minimax",
-      "model": "abab6.5s-chat",
+      "provider": "minimax-token",
+      "model": "MiniMax-M2.7",
       "temperature": 0.7,
       "max_tokens": 4000,
       "fallback": null,
@@ -13,8 +13,8 @@
     },
     "techlead": {
       "name": "Technical Lead",
-      "provider": "minimax",
-      "model": "abab6.5s-chat",
+      "provider": "minimax-token",
+      "model": "MiniMax-M2.7",
       "temperature": 0.3,
       "max_tokens": 8000,
       "fallback": null,
@@ -22,8 +22,8 @@
     },
     "orchestrator": {
       "name": "Orchestrator",
-      "provider": "minimax",
-      "model": "abab6-chat",
+      "provider": "minimax-token",
+      "model": "MiniMax-M2.7",
       "temperature": 0.5,
       "max_tokens": 6000,
       "fallback": null,
@@ -31,8 +31,8 @@
     },
     "be": {
       "name": "Backend",
-      "provider": "minimax",
-      "model": "abab6.5s-chat",
+      "provider": "minimax-token",
+      "model": "MiniMax-M2.7",
       "temperature": 0.2,
       "max_tokens": 8000,
       "fallback": null,
@@ -40,8 +40,8 @@
     },
     "fe": {
       "name": "Frontend",
-      "provider": "minimax",
-      "model": "abab6.5s-chat",
+      "provider": "minimax-token",
+      "model": "MiniMax-M2.7",
       "temperature": 0.3,
       "max_tokens": 6000,
       "fallback": null,
@@ -49,8 +49,8 @@
     },
     "db": {
       "name": "Database",
-      "provider": "minimax",
-      "model": "abab6.5s-chat",
+      "provider": "minimax-token",
+      "model": "MiniMax-M2.7",
       "temperature": 0.2,
       "max_tokens": 6000,
       "fallback": null,
@@ -58,8 +58,8 @@
     },
     "qa": {
       "name": "QA",
-      "provider": "minimax",
-      "model": "abab6-chat",
+      "provider": "minimax-token",
+      "model": "MiniMax-M2.5",
       "temperature": 0.4,
       "max_tokens": 8000,
       "fallback": null,
@@ -67,8 +67,8 @@
     },
     "devops": {
       "name": "DevOps",
-      "provider": "minimax",
-      "model": "abab6-chat",
+      "provider": "minimax-token",
+      "model": "MiniMax-M2.5",
       "temperature": 0.3,
       "max_tokens": 6000,
       "fallback": null,
@@ -76,8 +76,8 @@
     },
     "review": {
       "name": "Review",
-      "provider": "minimax",
-      "model": "abab6-chat",
+      "provider": "minimax-token",
+      "model": "MiniMax-M2.5",
       "temperature": 0.2,
       "max_tokens": 4000,
       "fallback": null,

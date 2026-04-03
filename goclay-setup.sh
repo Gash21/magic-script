@@ -423,16 +423,16 @@ create_agent_definitions() {
 
     local goclaw_dir="${PROJECT_ROOT}/.goclaw"
 
-    # Create agents-config.json with all agents configured for MiniMax
+    # Create agents-config.json with all agents configured for MiniMax Token Plan
     cat > "${goclaw_dir}/agents-config.json" << 'EOF'
 {
   "version": "1.0",
-  "default_provider": "minimax",
+  "default_provider": "minimax-token",
   "agents": {
     "po": {
       "name": "Product Owner",
-      "provider": "minimax",
-      "model": "abab6.5s-chat",
+      "provider": "minimax-token",
+      "model": "MiniMax-M2.7",
       "temperature": 0.7,
       "max_tokens": 4000,
       "fallback": null,
@@ -440,8 +440,8 @@ create_agent_definitions() {
     },
     "techlead": {
       "name": "Technical Lead",
-      "provider": "minimax",
-      "model": "abab6.5s-chat",
+      "provider": "minimax-token",
+      "model": "MiniMax-M2.7",
       "temperature": 0.3,
       "max_tokens": 8000,
       "fallback": null,
@@ -449,8 +449,8 @@ create_agent_definitions() {
     },
     "orchestrator": {
       "name": "Orchestrator",
-      "provider": "minimax",
-      "model": "abab6-chat",
+      "provider": "minimax-token",
+      "model": "MiniMax-M2.7",
       "temperature": 0.5,
       "max_tokens": 6000,
       "fallback": null,
@@ -458,8 +458,8 @@ create_agent_definitions() {
     },
     "be": {
       "name": "Backend",
-      "provider": "minimax",
-      "model": "abab6.5s-chat",
+      "provider": "minimax-token",
+      "model": "MiniMax-M2.7",
       "temperature": 0.2,
       "max_tokens": 8000,
       "fallback": null,
@@ -467,8 +467,8 @@ create_agent_definitions() {
     },
     "fe": {
       "name": "Frontend",
-      "provider": "minimax",
-      "model": "abab6.5s-chat",
+      "provider": "minimax-token",
+      "model": "MiniMax-M2.7",
       "temperature": 0.3,
       "max_tokens": 6000,
       "fallback": null,
@@ -476,8 +476,8 @@ create_agent_definitions() {
     },
     "db": {
       "name": "Database",
-      "provider": "minimax",
-      "model": "abab6.5s-chat",
+      "provider": "minimax-token",
+      "model": "MiniMax-M2.7",
       "temperature": 0.2,
       "max_tokens": 6000,
       "fallback": null,
@@ -485,8 +485,8 @@ create_agent_definitions() {
     },
     "qa": {
       "name": "QA",
-      "provider": "minimax",
-      "model": "abab6-chat",
+      "provider": "minimax-token",
+      "model": "MiniMax-M2.5",
       "temperature": 0.4,
       "max_tokens": 8000,
       "fallback": null,
@@ -494,8 +494,8 @@ create_agent_definitions() {
     },
     "devops": {
       "name": "DevOps",
-      "provider": "minimax",
-      "model": "abab6-chat",
+      "provider": "minimax-token",
+      "model": "MiniMax-M2.5",
       "temperature": 0.3,
       "max_tokens": 6000,
       "fallback": null,
@@ -503,8 +503,8 @@ create_agent_definitions() {
     },
     "review": {
       "name": "Review",
-      "provider": "minimax",
-      "model": "abab6-chat",
+      "provider": "minimax-token",
+      "model": "MiniMax-M2.5",
       "temperature": 0.2,
       "max_tokens": 4000,
       "fallback": null,
@@ -514,25 +514,27 @@ create_agent_definitions() {
 }
 EOF
 
-    # Create providers-config.json with MiniMax, OpenAI, and Anthropic
+    # Create providers-config.json with MiniMax Token Plan, OpenAI, and Anthropic
     cat > "${goclaw_dir}/providers-config.json" << 'EOF'
 {
   "version": "1.0",
   "providers": {
-    "minimax": {
-      "name": "MiniMax",
+    "minimax-token": {
+      "name": "MiniMax Token Plan",
       "api_key_env": "MINIMAX_API_KEY",
-      "base_url": "https://api.minimax.chat/v1",
+      "base_url": "https://api.minimax.io/anthropic",
+      "auth_header": "x-api-key",
+      "auth_type": "anthropic-compatible",
       "models": {
-        "abab6.5s-chat": {
-          "name": "abab6.5s-chat",
-          "max_tokens": 8192,
+        "MiniMax-M2.7": {
+          "name": "MiniMax-M2.7",
+          "max_tokens": 128000,
           "input_cost_per_1k": 0.00015,
           "output_cost_per_1k": 0.0006
         },
-        "abab6-chat": {
-          "name": "abab6-chat",
-          "max_tokens": 4096,
+        "MiniMax-M2.5": {
+          "name": "MiniMax-M2.5",
+          "max_tokens": 128000,
           "input_cost_per_1k": 0.00012,
           "output_cost_per_1k": 0.00048
         }
@@ -564,6 +566,26 @@ EOF
       "rate_limit": {
         "requests_per_minute": 500,
         "tokens_per_minute": 150000
+      },
+      "enabled": false
+    },
+    "gpt-codex-plus": {
+      "name": "GPT Codex Plus",
+      "api_key_env": "OPENAI_API_KEY",
+      "base_url": "https://api.minimax.io/openai",
+      "auth_header": "authorization",
+      "auth_type": "bearer-token",
+      "models": {
+        "gpt-codex-plus": {
+          "name": "gpt-codex-plus",
+          "max_tokens": 128000,
+          "input_cost_per_1k": 0.00015,
+          "output_cost_per_1k": 0.0006
+        }
+      },
+      "rate_limit": {
+        "requests_per_minute": 100,
+        "tokens_per_minute": 100000
       },
       "enabled": false
     },
@@ -748,12 +770,12 @@ create_env_template() {
 
     cat > "$env_example" << 'EOF'
 # === LLM PROVIDERS ===
-MINIMAX_API_KEY=           # Required: MiniMax API key (default provider)
+MINIMAX_API_KEY=           # Required: MiniMax Token Plan key (default provider)
 OPENAI_API_KEY=            # Optional: OpenAI API key (for OpenAI models)
 ANTHROPIC_API_KEY=         # Optional: Anthropic API key (for Claude models)
 
 # === CONFIGURATION ===
-DEFAULT_PROVIDER=minimax   # Default LLM provider (minimax, openai, anthropic)
+DEFAULT_PROVIDER=minimax-token   # Default LLM provider (minimax-token, openai, anthropic)
 CONFIG_HOT_RELOAD=true     # Reload config without restarting GoClaw
 
 # === COMMUNICATION ===

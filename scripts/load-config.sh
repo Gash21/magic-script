@@ -120,7 +120,7 @@ validate_agents_config() {
         model=$(jq -r ".agents.$agent_id.model" "$AGENTS_CONFIG")
 
         # Check if provider exists in providers-config.json
-        if ! jq -e ".providers.$provider" "$PROVIDERS_CONFIG" &>/dev/null; then
+        if ! jq -e ".providers[\"$provider\"]" "$PROVIDERS_CONFIG" &>/dev/null; then
             log_warn "Agent '$agent_id' uses unknown provider: $provider"
         fi
 
@@ -157,9 +157,9 @@ validate_providers_config() {
     # Validate each provider
     jq -r '.providers | to_entries[] | .key' "$PROVIDERS_CONFIG" | while read -r provider_id; do
         local name
-        name=$(jq -r ".providers.$provider_id.name" "$PROVIDERS_CONFIG")
+        name=$(jq -r ".providers[\"$provider_id\"].name" "$PROVIDERS_CONFIG")
         local enabled
-        enabled=$(jq -r ".providers.$provider_id.enabled" "$PROVIDERS_CONFIG")
+        enabled=$(jq -r ".providers[\"$provider_id\"].enabled" "$PROVIDERS_CONFIG")
 
         if [[ "$enabled" == "true" ]]; then
             log_success "  ✓ $name ($provider_id) - ENABLED"
@@ -256,7 +256,7 @@ list_providers() {
     echo ""
     log_info "Provider Details:"
     jq -r '.providers | to_entries[] |
-        if .value.enabled == "true" then
+        if .value.enabled == true then
           "  ✓ \(.value.name) (\(.key))"
         else
           "    \(.value.name) (\(.key)) - DISABLED"
@@ -325,14 +325,14 @@ switch_provider() {
     fi
 
     # Validate provider exists
-    if ! jq -e ".providers.$new_provider" "$PROVIDERS_CONFIG" &>/dev/null; then
+    if ! jq -e ".providers[\"$new_provider\"]" "$PROVIDERS_CONFIG" &>/dev/null; then
         log_error "Provider not found: $new_provider"
         return 1
     fi
 
     # Validate provider is enabled
     local enabled
-    enabled=$(jq -r ".providers.$new_provider.enabled" "$PROVIDERS_CONFIG")
+    enabled=$(jq -r ".providers[\"$new_provider\"].enabled" "$PROVIDERS_CONFIG")
     if [[ "$enabled" != "true" ]]; then
         log_error "Provider is not enabled: $new_provider"
         log_error "Add API key to .env and set 'enabled': true in providers-config.json"
@@ -348,7 +348,7 @@ switch_provider() {
 
     # Update fallback if provided
     if [[ -n "$fallback" ]]; then
-        if ! jq -e ".providers.$fallback" "$PROVIDERS_CONFIG" &>/dev/null; then
+        if ! jq -e ".providers[\"$fallback\"]" "$PROVIDERS_CONFIG" &>/dev/null; then
             log_error "Fallback provider not found: $fallback"
             return 1
         fi
