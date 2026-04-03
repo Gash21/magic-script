@@ -168,7 +168,11 @@ install_claude_code() {
 
     # Ensure Node.js is available
     export PATH="/root/.local/share/fnm:$PATH"
-    fnm use "${NODE_VERSION}" &>/dev/null || true
+    # Use timeout to prevent hanging if fnm use stalls
+    timeout 10 fnm use "${NODE_VERSION}" &>/dev/null || {
+        # If fnm use fails/stalls, try using eval with fnm env
+        eval "$(fnm env --shell=bash)" 2>/dev/null || true
+    }
 
     # Check if already installed
     if command -v claude &>/dev/null; then
@@ -198,7 +202,11 @@ install_happy_coder() {
 
     # Ensure Node.js is available
     export PATH="/root/.local/share/fnm:$PATH"
-    fnm use "${NODE_VERSION}" &>/dev/null || true
+    # Use timeout to prevent hanging if fnm use stalls
+    timeout 10 fnm use "${NODE_VERSION}" &>/dev/null || {
+        # If fnm use fails/stalls, try using eval with fnm env
+        eval "$(fnm env --shell=bash)" 2>/dev/null || true
+    }
 
     # Check if already installed
     if command -v happy &>/dev/null; then
@@ -250,7 +258,11 @@ install_openai_codex() {
 
     # Ensure Node.js is available
     export PATH="/root/.local/share/fnm:$PATH"
-    fnm use "${NODE_VERSION}" &>/dev/null || true
+    # Use timeout to prevent hanging if fnm use stalls
+    timeout 10 fnm use "${NODE_VERSION}" &>/dev/null || {
+        # If fnm use fails/stalls, try using eval with fnm env
+        eval "$(fnm env --shell=bash)" 2>/dev/null || true
+    }
 
     # Check if already installed
     if command -v codex &>/dev/null; then
