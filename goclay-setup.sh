@@ -283,8 +283,8 @@ install_goclaw() {
     chown -R "${USERNAME}:${USERNAME}" "/home/${USERNAME}/.goclaw"
     chmod 700 "/home/${USERNAME}/.goclaw"
 
-    # Create docker-compose file for GoClaw
-    local compose_file="/root/docker-compose.goclaw.yml"
+    # Create docker-compose file for GoClaw in project root
+    local compose_file="${PROJECT_ROOT}/docker-compose.goclaw.yml"
 
     if [[ ! -f "$compose_file" ]]; then
         cat > "$compose_file" << 'EOF'
@@ -833,7 +833,9 @@ fi
 
 # Start GoClaw
 echo "Starting GoClaw..."
-docker compose -f /root/docker-compose.goclaw.yml up -d
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+docker compose -f "${PROJECT_ROOT}/docker-compose.goclaw.yml" up -d
 
 # Show status
 echo ""
@@ -858,7 +860,9 @@ echo "Stopping pipeline services..."
 
 # Stop GoClaw
 echo "Stopping GoClaw..."
-docker compose -f /root/docker-compose.goclaw.yml down
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+docker compose -f "${PROJECT_ROOT}/docker-compose.goclaw.yml" down
 
 # Ask about Redis
 read -p "Stop Redis too? (y/N): " -n 1 -r
