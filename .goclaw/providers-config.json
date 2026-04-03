@@ -1,0 +1,71 @@
+{
+  "version": "1.0",
+  "providers": {
+    "minimax": {
+      "name": "MiniMax",
+      "api_key_env": "MINIMAX_API_KEY",
+      "base_url": "https://api.minimax.chat/v1",
+      "models": {
+        "abab6.5s-chat": {
+          "name": "abab6.5s-chat",
+          "max_tokens": 8192,
+          "input_cost_per_1k": 0.00015,
+          "output_cost_per_1k": 0.0006
+        },
+        "abab6-chat": {
+          "name": "abab6-chat",
+          "max_tokens": 4096,
+          "input_cost_per_1k": 0.00012,
+          "output_cost_per_1k": 0.00048
+        }
+      },
+      "rate_limit": {
+        "requests_per_minute": 20,
+        "tokens_per_minute": 30000
+      },
+      "enabled": true
+    },
+    "openai": {
+      "name": "OpenAI",
+      "api_key_env": "OPENAI_API_KEY",
+      "base_url": "https://api.openai.com/v1",
+      "models": {
+        "gpt-4o": {
+          "name": "gpt-4o",
+          "max_tokens": 128000,
+          "input_cost_per_1k": 0.0025,
+          "output_cost_per_1k": 0.01
+        },
+        "gpt-4o-mini": {
+          "name": "gpt-4o-mini",
+          "max_tokens": 128000,
+          "input_cost_per_1k": 0.00015,
+          "output_cost_per_1k": 0.0006
+        }
+      },
+      "rate_limit": {
+        "requests_per_minute": 500,
+        "tokens_per_minute": 150000
+      },
+      "enabled": false
+    },
+    "anthropic": {
+      "name": "Anthropic",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "base_url": "https://api.anthropic.com/v1",
+      "models": {
+        "claude-3-5-sonnet-20241022": {
+          "name": "claude-3-5-sonnet-20241022",
+          "max_tokens": 200000,
+          "input_cost_per_1k": 0.003,
+          "output_cost_per_1k": 0.015
+        }
+      },
+      "rate_limit": {
+        "requests_per_minute": 50,
+        "tokens_per_minute": 100000
+      },
+      "enabled": false
+    }
+  }
+}

@@ -416,208 +416,184 @@ create_pipeline_structure() {
 }
 
 #-------------------------------------------------------------------------------
-# 11. Agent Definitions
+# 11. Agent Configuration (Dynamic JSON-based)
 #-------------------------------------------------------------------------------
 create_agent_definitions() {
-    log_step "Creating agent definitions..."
+    log_step "Creating dynamic agent configuration..."
 
-    local agents_dir="${PROJECT_ROOT}/.goclaw/agents"
+    local goclaw_dir="${PROJECT_ROOT}/.goclaw"
 
-    # PO Agent
-    cat > "${agents_dir}/po-agent.md" << 'EOF'
-# Product Owner Agent
-
-## Responsibilities
-- Gather and clarify requirements from stakeholders
-- Write and maintain PRD (Product Requirements Document)
-- Create user stories with acceptance criteria
-- Prioritize backlog based on business value
-- Accept/reject work based on acceptance criteria
-
-## Wave Activities
-- **Wave 1**: Sprint planning, backlog refinement
-- **Wave 2**: Answer clarification questions from tech agents
-- **Wave 3**: Accept completed work against acceptance criteria
-
-## Success Criteria
-- PRD is clear and unambiguous
-- Acceptance criteria are testable
-- Backlog is properly prioritized
+    # Create agents-config.json with all agents configured for MiniMax
+    cat > "${goclaw_dir}/agents-config.json" << 'EOF'
+{
+  "version": "1.0",
+  "default_provider": "minimax",
+  "agents": {
+    "po": {
+      "name": "Product Owner",
+      "provider": "minimax",
+      "model": "abab6.5s-chat",
+      "temperature": 0.7,
+      "max_tokens": 4000,
+      "fallback": null,
+      "waves": ["1", "2", "3"]
+    },
+    "techlead": {
+      "name": "Technical Lead",
+      "provider": "minimax",
+      "model": "abab6.5s-chat",
+      "temperature": 0.3,
+      "max_tokens": 8000,
+      "fallback": null,
+      "waves": ["1", "2", "3"]
+    },
+    "orchestrator": {
+      "name": "Orchestrator",
+      "provider": "minimax",
+      "model": "abab6-chat",
+      "temperature": 0.5,
+      "max_tokens": 6000,
+      "fallback": null,
+      "waves": ["1", "2", "3"]
+    },
+    "be": {
+      "name": "Backend",
+      "provider": "minimax",
+      "model": "abab6.5s-chat",
+      "temperature": 0.2,
+      "max_tokens": 8000,
+      "fallback": null,
+      "waves": ["1", "2", "3"]
+    },
+    "fe": {
+      "name": "Frontend",
+      "provider": "minimax",
+      "model": "abab6.5s-chat",
+      "temperature": 0.3,
+      "max_tokens": 6000,
+      "fallback": null,
+      "waves": ["1", "2", "3"]
+    },
+    "db": {
+      "name": "Database",
+      "provider": "minimax",
+      "model": "abab6.5s-chat",
+      "temperature": 0.2,
+      "max_tokens": 6000,
+      "fallback": null,
+      "waves": ["1", "2", "3"]
+    },
+    "qa": {
+      "name": "QA",
+      "provider": "minimax",
+      "model": "abab6-chat",
+      "temperature": 0.4,
+      "max_tokens": 8000,
+      "fallback": null,
+      "waves": ["1", "3"]
+    },
+    "devops": {
+      "name": "DevOps",
+      "provider": "minimax",
+      "model": "abab6-chat",
+      "temperature": 0.3,
+      "max_tokens": 6000,
+      "fallback": null,
+      "waves": ["1", "2", "3"]
+    },
+    "review": {
+      "name": "Review",
+      "provider": "minimax",
+      "model": "abab6-chat",
+      "temperature": 0.2,
+      "max_tokens": 4000,
+      "fallback": null,
+      "waves": ["1", "2", "3"]
+    }
+  }
+}
 EOF
 
-    # Tech Lead Agent
-    cat > "${agents_dir}/techlead-agent.md" << 'EOF'
-# Technical Lead Agent
-
-## Responsibilities
-- Review PRD for technical feasibility
-- Identify technical risks and dependencies
-- Make architecture decisions (when to use architecture agent)
-- Coordinate between BE, FE, DB agents
-- Ensure code quality and best practices
-
-## Wave Activities
-- **Wave 1**: Architecture planning, tech stack selection
-- **Wave 2**: Technical guidance, conflict resolution
-- **Wave 3**: Code review, technical sign-off
-
-## Success Criteria
-- Architecture is scalable and maintainable
-- Technical risks are identified and mitigated
-- Code meets quality standards
+    # Create providers-config.json with MiniMax, OpenAI, and Anthropic
+    cat > "${goclaw_dir}/providers-config.json" << 'EOF'
+{
+  "version": "1.0",
+  "providers": {
+    "minimax": {
+      "name": "MiniMax",
+      "api_key_env": "MINIMAX_API_KEY",
+      "base_url": "https://api.minimax.chat/v1",
+      "models": {
+        "abab6.5s-chat": {
+          "name": "abab6.5s-chat",
+          "max_tokens": 8192,
+          "input_cost_per_1k": 0.00015,
+          "output_cost_per_1k": 0.0006
+        },
+        "abab6-chat": {
+          "name": "abab6-chat",
+          "max_tokens": 4096,
+          "input_cost_per_1k": 0.00012,
+          "output_cost_per_1k": 0.00048
+        }
+      },
+      "rate_limit": {
+        "requests_per_minute": 20,
+        "tokens_per_minute": 30000
+      },
+      "enabled": true
+    },
+    "openai": {
+      "name": "OpenAI",
+      "api_key_env": "OPENAI_API_KEY",
+      "base_url": "https://api.openai.com/v1",
+      "models": {
+        "gpt-4o": {
+          "name": "gpt-4o",
+          "max_tokens": 128000,
+          "input_cost_per_1k": 0.0025,
+          "output_cost_per_1k": 0.01
+        },
+        "gpt-4o-mini": {
+          "name": "gpt-4o-mini",
+          "max_tokens": 128000,
+          "input_cost_per_1k": 0.00015,
+          "output_cost_per_1k": 0.0006
+        }
+      },
+      "rate_limit": {
+        "requests_per_minute": 500,
+        "tokens_per_minute": 150000
+      },
+      "enabled": false
+    },
+    "anthropic": {
+      "name": "Anthropic",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "base_url": "https://api.anthropic.com/v1",
+      "models": {
+        "claude-3-5-sonnet-20241022": {
+          "name": "claude-3-5-sonnet-20241022",
+          "max_tokens": 200000,
+          "input_cost_per_1k": 0.003,
+          "output_cost_per_1k": 0.015
+        }
+      },
+      "rate_limit": {
+        "requests_per_minute": 50,
+        "tokens_per_minute": 100000
+      },
+      "enabled": false
+    }
+  }
+}
 EOF
 
-    # Orchestrator Agent
-    cat > "${agents_dir}/orchestrator.md" << 'EOF'
-# Orchestrator Agent
-
-## Responsibilities
-- Coordinate all agents during sprint execution
-- Manage task dependencies and parallelization
-- Monitor circuit breaker status
-- Handle agent failures and retries
-- Report progress to stakeholders
-
-## Wave Activities
-- **All Waves**: Coordination and monitoring
-
-## Success Criteria
-- All agents complete tasks in correct order
-- Circuit breaker trips are handled gracefully
-- Stakeholders are kept informed
-EOF
-
-    # Backend Agent
-    cat > "${agents_dir}/be-agent.md" << 'EOF'
-# Backend Agent
-
-## Responsibilities
-- Implement business logic in backend code
-- Consume database schema (read-only, do not modify)
-- Create API endpoints
-- Write unit and integration tests
-- Follow tech lead architectural guidance
-
-## Wave Activities
-- **Wave 1**: API design, backend planning
-- **Wave 2**: Implementation, testing
-- **Wave 3**: Bug fixes, refinement
-
-## Success Criteria
-- API endpoints work as specified
-- Business logic is correct
-- Tests have good coverage
-EOF
-
-    # Frontend Agent
-    cat > "${agents_dir}/fe-agent.md" << 'EOF'
-# Frontend Agent
-
-## Responsibilities
-- Implement UI components
-- Use codegen for types (no manual schema access)
-- Consume API endpoints
-- Write frontend tests
-- Ensure responsive design
-
-## Wave Activities
-- **Wave 1**: UI/UX planning, component design
-- **Wave 2**: Implementation, styling
-- **Wave 3**: Bug fixes, polish
-
-## Success Criteria
-- UI matches design specifications
-- Components are reusable
-- Responsive on all devices
-EOF
-
-    # Database Agent
-    cat > "${agents_dir}/db-agent.md" << 'EOF'
-# Database Agent
-
-## Responsibilities
-- Own database schema modifications
-- Write migrations (up/down)
-- Optimize queries
-- Set up indexes and constraints
-- Document schema changes
-
-## Wave Activities
-- **Wave 1**: Schema design, migration planning
-- **Wave 2**: Migration implementation, testing
-- **Wave 3**: Query optimization, refinement
-
-## Success Criteria
-- Schema is normalized and efficient
-- Migrations are reversible
-- Queries are optimized
-EOF
-
-    # QA Agent
-    cat > "${agents_dir}/qa-agent.md" << 'EOF'
-# QA Agent
-
-## Responsibilities
-- **Wave 1**: Write test specs and test plan
-- **Wave 3**: Execute tests, file bug reports
-- Verify acceptance criteria
-- Measure test coverage
-- Perform exploratory testing
-
-## Wave Activities
-- **Wave 1**: Test planning, test case writing
-- **Wave 2**: (idle - tests not ready yet)
-- **Wave 3**: Test execution, bug reporting
-
-## Success Criteria
-- Test plan covers all requirements
-- Tests are automated where possible
-- Coverage meets targets (80%+)
-EOF
-
-    # DevOps Agent
-    cat > "${agents_dir}/devops-agent.md" << 'EOF'
-# DevOps Agent
-
-## Responsibilities
-- Set up CI/CD pipelines
-- Configure infrastructure (Docker, etc.)
-- Manage deployment pipelines
-- Set up monitoring and logging
-- Handle production deployments
-
-## Wave Activities
-- **Wave 1**: Infrastructure planning
-- **Wave 2**: Pipeline implementation
-- **Wave 3**: Deployment, monitoring setup
-
-## Success Criteria
-- CI/CD pipeline is automated
-- Deployments are safe and reversible
-- Monitoring covers critical metrics
-EOF
-
-    # Review Agent
-    cat > "${agents_dir}/review-agent.md" << 'EOF'
-# Review Agent
-
-## Responsibilities
-- Review all code changes
-- Check for security vulnerabilities
-- Ensure code follows best practices
-- Verify tests are adequate
-- Approve/reject pull requests
-
-## Wave Activities
-- **All Waves**: Continuous review
-
-## Success Criteria
-- No security vulnerabilities in merged code
-- Code follows style guidelines
-- Tests are comprehensive
-EOF
-
-    log_info "Agent definitions created"
+    log_info "Dynamic agent configuration created"
+    log_info "  - agents-config.json: Per-agent LLM configuration"
+    log_info "  - providers-config.json: Provider registry with pricing"
+    log_info "  - Default provider: MiniMax (all agents)"
+    log_info "  - To add OpenAI/Anthropic: Add API keys to .env and set enabled:true in providers-config.json"
 }
 
 #-------------------------------------------------------------------------------
@@ -772,8 +748,13 @@ create_env_template() {
 
     cat > "$env_example" << 'EOF'
 # === LLM PROVIDERS ===
-OPENAI_API_KEY=           # For Codex gpt-5.4 (main agents)
-MINIMAX_API_KEY=          # For orchestrator + review agent (cheap)
+MINIMAX_API_KEY=           # Required: MiniMax API key (default provider)
+OPENAI_API_KEY=            # Optional: OpenAI API key (for OpenAI models)
+ANTHROPIC_API_KEY=         # Optional: Anthropic API key (for Claude models)
+
+# === CONFIGURATION ===
+DEFAULT_PROVIDER=minimax   # Default LLM provider (minimax, openai, anthropic)
+CONFIG_HOT_RELOAD=true     # Reload config without restarting GoClaw
 
 # === COMMUNICATION ===
 TELEGRAM_BOT_TOKEN=       # BotFather token
