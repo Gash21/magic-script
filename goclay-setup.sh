@@ -208,23 +208,37 @@ install_happy_coder() {
         return 0
     fi
 
-    # Install Happy-Coder
-    npm install -g happy-coder
+    # Check if package exists on npm
+    log_info "Checking if happy-coder package exists..."
+    if ! npm view happy-coder &>/dev/null; then
+        log_warn "Package 'happy-coder' not found on npm registry"
+        log_warn "Happy-Coder CLI installation skipped"
+        log_warn "This is optional - Claude Code will work without it"
+        return 0
+    fi
 
-    # Verify installation
-    if command -v happy &>/dev/null; then
-        log_info "Happy-Coder installed: $(happy --version)"
-        echo ""
-        echo "=========================================="
-        echo "Happy-Coder Usage Instructions"
-        echo "=========================================="
-        echo "- Run 'happy' instead of 'claude' to start mobile-enabled sessions"
-        echo "- Download Happy Coder app (iOS/Android) and scan QR code"
-        echo "- Use 'happy codex' for Codex sessions"
-        echo ""
+    # Install Happy-Coder with timeout
+    log_info "Installing Happy-Coder (this may take a minute)..."
+    if timeout 300 npm install -g happy-coder --silent --no-audit --no-fund 2>&1; then
+        # Verify installation
+        if command -v happy &>/dev/null; then
+            log_info "Happy-Coder installed: $(happy --version)"
+            echo ""
+            echo "=========================================="
+            echo "Happy-Coder Usage Instructions"
+            echo "=========================================="
+            echo "- Run 'happy' instead of 'claude' to start mobile-enabled sessions"
+            echo "- Download Happy Coder app (iOS/Android) and scan QR code"
+            echo "- Use 'happy codex' for Codex sessions"
+            echo ""
+        else
+            log_error "Happy-Coder installation failed"
+            return 1
+        fi
     else
-        log_error "Happy-Coder installation failed"
-        return 1
+        log_error "Happy-Coder installation timed out or failed"
+        log_warn "Continuing without Happy-Coder (optional)"
+        return 0
     fi
 }
 
@@ -246,15 +260,29 @@ install_openai_codex() {
         return 0
     fi
 
-    # Install OpenAI Codex
-    npm install -g @openai/codex
+    # Check if package exists on npm
+    log_info "Checking if @openai/codex package exists..."
+    if ! npm view @openai/codex &>/dev/null; then
+        log_warn "Package '@openai/codex' not found on npm registry"
+        log_warn "OpenAI Codex CLI installation skipped"
+        log_warn "This is optional - Claude Code will work without it"
+        return 0
+    fi
 
-    # Verify installation
-    if command -v codex &>/dev/null; then
-        log_info "OpenAI Codex CLI installed: $(codex --version)"
+    # Install OpenAI Codex with timeout
+    log_info "Installing OpenAI Codex (this may take a minute)..."
+    if timeout 300 npm install -g @openai/codex --silent --no-audit --no-fund 2>&1; then
+        # Verify installation
+        if command -v codex &>/dev/null; then
+            log_info "OpenAI Codex CLI installed: $(codex --version)"
+        else
+            log_error "OpenAI Codex CLI installation failed"
+            return 1
+        fi
     else
-        log_error "OpenAI Codex CLI installation failed"
-        return 1
+        log_error "OpenAI Codex CLI installation timed out or failed"
+        log_warn "Continuing without OpenAI Codex (optional)"
+        return 0
     fi
 }
 
