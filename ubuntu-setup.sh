@@ -14,6 +14,9 @@ readonly DOCKER_LOG_MAX_SIZE="10m"
 readonly DOCKER_LOG_MAX_FILE="5"
 readonly TAILSCALE_SUBNET="192.168.0.0/24"
 
+# Username will be derived from hostname (set early for use in functions)
+USERNAME="$(hostname)"
+
 #-------------------------------------------------------------------------------
 # Colors & Logging
 #-------------------------------------------------------------------------------
@@ -178,9 +181,8 @@ EOF
 create_user() {
     log_step "Creating user account..."
 
-    # Username derived from hostname
-    USERNAME="$(hostname)"
-    USER_HOME="/home/$USERNAME"
+    # USERNAME is already set globally from hostname
+    local USER_HOME="/home/$USERNAME"
 
     if id "$USERNAME" &>/dev/null; then
         log_warn "User '$USERNAME' already exists - skipping creation"
