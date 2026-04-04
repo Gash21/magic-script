@@ -89,8 +89,11 @@ install_fnm() {
         return 0
     fi
 
-    # Install fnm as the target user (installer uses $HOME)
-    HOME="${USER_HOME}" su - "$TARGET_USER" -c 'curl -fsSL https://fnm.vercel.app/install | bash'
+    # Install fnm as the target user via sudo (avoids su- subshell sourcing user profiles)
+    sudo -u "$TARGET_USER" \
+        HOME="${USER_HOME}" \
+        XDG_CONFIG_HOME="${USER_HOME}/.config" \
+        bash -c 'curl -fsSL https://fnm.vercel.app/install | bash'
 
     # Make fnm available immediately in current session
     export PATH="${FNM_DIR}:$PATH"
@@ -446,7 +449,10 @@ setup_user_environment() {
     # Install fnm for the target user if not already installed
     if [[ ! -d "${FNM_DIR}" ]]; then
         log_info "Installing fnm for user ${TARGET_USER}..."
-        HOME="${USER_HOME}" su - "$TARGET_USER" -c 'curl -fsSL https://fnm.vercel.app/install | bash' || true
+        sudo -u "$TARGET_USER" \
+            HOME="${USER_HOME}" \
+            XDG_CONFIG_HOME="${USER_HOME}/.config" \
+            bash -c 'curl -fsSL https://fnm.vercel.app/install | bash' || true
         chmod -R g+rx "${USER_HOME}/.local"
         chown -R "$TARGET_USER:$TARGET_USER" "${USER_HOME}/.local"
     fi
