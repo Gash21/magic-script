@@ -542,7 +542,38 @@ additional_hardening() {
 }
 
 #-------------------------------------------------------------------------------
-# 14. Cleanup
+# 14. GitHub CLI Installation (Official method from cli.github.com)
+#-------------------------------------------------------------------------------
+install_github_cli() {
+    log_step "Installing GitHub CLI..."
+
+    if command -v gh &>/dev/null; then
+        log_warn "GitHub CLI already installed - skipping"
+        return 0
+    fi
+
+    # Install wget if not present
+    type -p wget >/dev/null || apt-get install -y wget
+
+    # Add GPG key
+    mkdir -p -m 755 /etc/apt/keyrings
+    wget -nv -O /tmp/gh-cli.gpg https://cli.github.com/packages/githubcli-archive-keyring.gpg
+    cat /tmp/gh-cli.gpg | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null
+    chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+
+    # Add repository
+    mkdir -p -m 755 /etc/apt/sources.list.d
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+
+    apt-get update
+    apt-get install -y gh
+
+    log_info "GitHub CLI installed successfully"
+}
+
+#-------------------------------------------------------------------------------
+# 15. Cleanup
 #-------------------------------------------------------------------------------
 cleanup() {
     log_step "Cleaning up..."
@@ -562,6 +593,7 @@ print_summary() {
     echo "User:       $USERNAME"
     echo "Shell:      /bin/zsh (Oh My Zsh)"
     echo "Docker:     Installed with ${DOCKER_LOG_MAX_SIZE} log rotation"
+    echo "GitHub CLI: Installed (gh)"
     echo "Firewall:   UFW (SSH, HTTP, HTTPS, Docker allowed)"
     echo "Fail2ban:   Enabled (3 retries, 1hr ban)"
     echo "SSH:        Root login disabled, password auth enabled (add keys to disable)"
@@ -591,6 +623,7 @@ main() {
     setup_ssh_keys
     install_docker
     configure_docker_logging
+    install_github_cli
     install_oh_my_zsh
     fix_terminal_detection
     additional_hardening
