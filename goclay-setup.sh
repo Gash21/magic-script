@@ -104,18 +104,20 @@ install_fnm() {
 
         # Add fnm to user's .bashrc
         grep -q "fnm env" "${USER_HOME}/.bashrc" 2>/dev/null || {
-            echo "" >> "${USER_HOME}/.bashrc"
-            echo "# fnm - Fast Node Manager" >> "${USER_HOME}/.bashrc"
-            echo "export PATH=\"${FNM_DIR}:\$PATH\"" >> "${USER_HOME}/.bashrc"
-            echo 'eval "$(fnm env --use-on-cd)"' >> "${USER_HOME}/.bashrc"
+            cat >> "${USER_HOME}/.bashrc" << 'EOFBASHRC'
+# fnm - Fast Node Manager
+export PATH="$HOME/.local/share/fnm:$PATH"
+eval "$(fnm env --use-on-cd)"
+EOFBASHRC
         }
 
         # Add fnm to user's .zshrc
         grep -q "fnm env" "${USER_HOME}/.zshrc" 2>/dev/null || {
-            echo "" >> "${USER_HOME}/.zshrc"
-            echo "# fnm - Fast Node Manager" >> "${USER_HOME}/.zshrc"
-            echo "export PATH=\"${FNM_DIR}:\$PATH\"" >> "${USER_HOME}/.zshrc"
-            echo 'eval "$(fnm env --use-on-cd)"' >> "${USER_HOME}/.zshrc"
+            cat >> "${USER_HOME}/.zshrc" << 'EOFZSHRC'
+# fnm - Fast Node Manager
+export PATH="$HOME/.local/share/fnm:$PATH"
+eval "$(fnm env --use-on-cd)"
+EOFZSHRC
         }
 
         # Make fnm directory tree group-readable so user can access npm binaries
@@ -461,10 +463,11 @@ setup_user_environment() {
     for shell_config in "$zshrc" "$bashrc"; do
         if [[ -f "$shell_config" ]]; then
             grep -q "fnm env" "$shell_config" 2>/dev/null || {
-                echo "" >> "$shell_config"
-                echo "# fnm - Fast Node Manager" >> "$shell_config"
-                echo "export PATH=\"${FNM_DIR}:\$PATH\"" >> "$shell_config"
-                echo 'eval "$(fnm env --use-on-cd)"' >> "$shell_config"
+                cat >> "$shell_config" << 'EOFNMF'
+# fnm - Fast Node Manager
+export PATH="$HOME/.local/share/fnm:$PATH"
+eval "$(fnm env --use-on-cd)"
+EOFNMF
             }
         fi
     done
