@@ -14,7 +14,10 @@ set -euo pipefail
 readonly NODE_VERSION="22"
 readonly GOCLAW_IMAGE="ghcr.io/nextlevelbuilder/goclaw:full"
 readonly GOCLAW_PORT="18789"
-readonly USERNAME="$(hostname)"
+readonly TARGET_USER="${SUDO_USER:-$USER}"
+readonly USER_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+readonly USERNAME="$TARGET_USER"
+readonly FNM_DIR="${USER_HOME}/.local/share/fnm"
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly PROJECT_ROOT="$SCRIPT_DIR"
 
@@ -86,31 +89,35 @@ install_fnm() {
         return 0
     fi
 
-    # Install fnm
-    curl -fsSL https://fnm.vercel.app/install | bash
+    # Install fnm as the target user (installer uses $HOME)
+    HOME="${USER_HOME}" su - "$TARGET_USER" -c 'curl -fsSL https://fnm.vercel.app/install | bash'
 
     # Make fnm available immediately in current session
-    export PATH="/root/.local/share/fnm:$PATH"
+    export PATH="${FNM_DIR}:$PATH"
 
     # Source fnm environment in current shell
-    if [[ -f "/root/.local/share/fnm/fnm" ]]; then
-        eval "$("/root/.local/share/fnm/fnm" env --shell bash)"
+    if [[ -f "${FNM_DIR}/fnm" ]]; then
+        eval "$("${FNM_DIR}/fnm" env --shell bash)"
 
-        # Add fnm to .bashrc for future Bash sessions
-        grep -q "fnm env" /root/.bashrc 2>/dev/null || {
-            echo "" >> /root/.bashrc
-            echo "# fnm - Fast Node Manager" >> /root/.bashrc
-            echo 'export PATH="/root/.local/share/fnm:$PATH"' >> /root/.bashrc
-            echo 'eval "$(fnm env --use-on-cd)"' >> /root/.bashrc
+        # Add fnm to user's .bashrc
+        grep -q "fnm env" "${USER_HOME}/.bashrc" 2>/dev/null || {
+            echo "" >> "${USER_HOME}/.bashrc"
+            echo "# fnm - Fast Node Manager" >> "${USER_HOME}/.bashrc"
+            echo "export PATH=\"${FNM_DIR}:\$PATH\"" >> "${USER_HOME}/.bashrc"
+            echo 'eval "$(fnm env --use-on-cd)"' >> "${USER_HOME}/.bashrc"
         }
 
-        # Add fnm to .zshrc for future Zsh sessions
-        grep -q "fnm env" /root/.zshrc 2>/dev/null || {
-            echo "" >> /root/.zshrc
-            echo "# fnm - Fast Node Manager" >> /root/.zshrc
-            echo 'export PATH="/root/.local/share/fnm:$PATH"' >> /root/.zshrc
-            echo 'eval "$(fnm env --use-on-cd)"' >> /root/.zshrc
+        # Add fnm to user's .zshrc
+        grep -q "fnm env" "${USER_HOME}/.zshrc" 2>/dev/null || {
+            echo "" >> "${USER_HOME}/.zshrc"
+            echo "# fnm - Fast Node Manager" >> "${USER_HOME}/.zshrc"
+            echo "export PATH=\"${FNM_DIR}:\$PATH\"" >> "${USER_HOME}/.zshrc"
+            echo 'eval "$(fnm env --use-on-cd)"' >> "${USER_HOME}/.zshrc"
         }
+
+        # Make fnm directory tree group-readable so user can access npm binaries
+        chmod -R g+rx "${USER_HOME}/.local"
+        chown -R "$TARGET_USER:$TARGET_USER" "${USER_HOME}/.local"
 
         log_info "fnm installed and added to .bashrc and .zshrc"
     else
@@ -126,11 +133,11 @@ install_nodejs() {
     log_step "Installing Node.js ${NODE_VERSION} via fnm..."
 
     # Ensure fnm is in PATH and sourced
-    export PATH="/root/.local/share/fnm:$PATH"
+    export PATH="${FNM_DIR}:$PATH"
 
     # Source fnm environment if not already loaded
-    if [[ -f "/root/.local/share/fnm/fnm" ]]; then
-        eval "$("/root/.local/share/fnm/fnm" env --shell bash)" 2>/dev/null || true
+    if [[ -f "${FNM_DIR}/fnm" ]]; then
+        eval "$("${FNM_DIR}/fnm" env --shell bash)" 2>/dev/null || true
     fi
 
     if ! command -v fnm &>/dev/null; then
@@ -167,7 +174,7 @@ install_claude_code() {
     log_step "Installing Claude Code CLI..."
 
     # Ensure Node.js is available
-    export PATH="/root/.local/share/fnm:$PATH"
+    export PATH="${FNM_DIR}:$PATH"
     # Use timeout to prevent hanging if fnm use stalls
     timeout 10 fnm use "${NODE_VERSION}" &>/dev/null || {
         # If fnm use fails/stalls, try using eval with fnm env
@@ -182,7 +189,7 @@ install_claude_code() {
         return 0
     fi
 
-    # Install Claude Code
+    # Install Claude Code as root but to the fnm-managed node installation
     npm install -g @anthropic-ai/claude-code
 
     # Verify installation
@@ -207,7 +214,7 @@ install_happy_coder() {
     fi
 
     # Ensure Node.js is available
-    export PATH="/root/.local/share/fnm:$PATH"
+    export PATH="${FNM_DIR}:$PATH"
     # Use timeout to prevent hanging if fnm use stalls
     timeout 10 fnm use "${NODE_VERSION}" &>/dev/null || {
         # If fnm use fails/stalls, try using eval with fnm env
@@ -263,7 +270,7 @@ install_openai_codex() {
     log_step "Installing OpenAI Codex CLI..."
 
     # Ensure Node.js is available
-    export PATH="/root/.local/share/fnm:$PATH"
+    export PATH="${FNM_DIR}:$PATH"
     # Use timeout to prevent hanging if fnm use stalls
     timeout 10 fnm use "${NODE_VERSION}" &>/dev/null || {
         # If fnm use fails/stalls, try using eval with fnm env
@@ -320,20 +327,16 @@ install_goclaw() {
     log_info "Pulling GoClaw Docker image..."
     docker pull "${GOCLAW_IMAGE}"
 
-    # Create goclaw config directory for root user
-    mkdir -p /root/.goclaw
-    chmod 700 /root/.goclaw
-
-    # Also create for the regular user
-    mkdir -p "/home/${USERNAME}/.goclaw"
-    chown -R "${USERNAME}:${USERNAME}" "/home/${USERNAME}/.goclaw"
-    chmod 700 "/home/${USERNAME}/.goclaw"
+    # Create goclaw config directory for the target user
+    mkdir -p "${USER_HOME}/.goclaw"
+    chown -R "${TARGET_USER}:${TARGET_USER}" "${USER_HOME}/.goclaw"
+    chmod 700 "${USER_HOME}/.goclaw"
 
     # Create docker-compose file for GoClaw in project root
     local compose_file="${PROJECT_ROOT}/docker-compose.goclaw.yml"
 
     if [[ ! -f "$compose_file" ]]; then
-        cat > "$compose_file" << 'EOF'
+        cat > "$compose_file" << EOF
 version: '3.8'
 services:
   postgres:
@@ -361,7 +364,7 @@ services:
     ports:
       - "18789:18789"
     volumes:
-      - /root/.goclaw:/root/.goclaw
+      - ${USER_HOME}/.goclaw:/root/.goclaw
       - /var/run/docker.sock:/var/run/docker.sock
       - ./:/workspace:ro
     environment:
@@ -435,16 +438,17 @@ install_gh_cli() {
 # 9. Environment Setup for Regular User
 #-------------------------------------------------------------------------------
 setup_user_environment() {
-    log_step "Setting up environment for user ${USERNAME}..."
+    log_step "Setting up environment for user ${TARGET_USER}..."
 
-    local user_home="/home/${USERNAME}"
-    local bashrc="${user_home}/.bashrc"
-    local zshrc="${user_home}/.zshrc"
+    local bashrc="${USER_HOME}/.bashrc"
+    local zshrc="${USER_HOME}/.zshrc"
 
-    # Install fnm for the regular user if not already installed
-    if [[ ! -d "${user_home}/.local/share/fnm" ]]; then
-        log_info "Installing fnm for user ${USERNAME}..."
-        su - "$USERNAME" -c 'curl -fsSL https://fnm.vercel.app/install | bash' || true
+    # Install fnm for the target user if not already installed
+    if [[ ! -d "${FNM_DIR}" ]]; then
+        log_info "Installing fnm for user ${TARGET_USER}..."
+        HOME="${USER_HOME}" su - "$TARGET_USER" -c 'curl -fsSL https://fnm.vercel.app/install | bash' || true
+        chmod -R g+rx "${USER_HOME}/.local"
+        chown -R "$TARGET_USER:$TARGET_USER" "${USER_HOME}/.local"
     fi
 
     # Add fnm to PATH in user's shell configs (both .bashrc and .zshrc)
@@ -453,13 +457,16 @@ setup_user_environment() {
             grep -q "fnm env" "$shell_config" 2>/dev/null || {
                 echo "" >> "$shell_config"
                 echo "# fnm - Fast Node Manager" >> "$shell_config"
-                echo "export PATH=\"${user_home}/.local/share/fnm:\$PATH\"" >> "$shell_config"
+                echo "export PATH=\"${FNM_DIR}:\$PATH\"" >> "$shell_config"
                 echo 'eval "$(fnm env --use-on-cd)"' >> "$shell_config"
             }
         fi
     done
 
-    log_info "User environment configured for ${USERNAME}"
+    # Ensure .local is group-readable so user can access npm global binaries
+    chmod -R g+rx "${USER_HOME}/.local" 2>/dev/null || true
+
+    log_info "User environment configured for ${TARGET_USER}"
 }
 
 #-------------------------------------------------------------------------------
@@ -1313,7 +1320,7 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
 
 # Install fnm (Fast Node Manager)
 RUN curl -fsSL https://fnm.vercel.app/install | bash
-ENV PATH="/root/.local/share/fnm:${PATH}"
+ENV PATH="/home/vscode/.local/share/fnm:${PATH}"
 RUN fnm install 22 && fnm use 22 && fnm default 22
 
 # Install global npm packages
