@@ -893,28 +893,60 @@ create_helper_scripts() {
 
 set -euo pipefail
 
-echo "Starting pipeline services..."
-
-# Start Redis
-if ! systemctl is-active --quiet redis-server; then
-    echo "Starting Redis..."
-    sudo systemctl start redis-server
-else
-    echo "Redis already running"
-fi
-
-# Start GoClaw
-echo "Starting GoClaw..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-docker compose -f "${PROJECT_ROOT}/docker-compose.goclaw.yml" up -d
+COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.goclaw.yml"
+
+# Remove obsolete 'version' warning if present (compose v2 ignores it)
+sed -i.bak '/^version:/d' "$COMPOSE_FILE" 2>/dev/null || true
+
+echo "Starting pipeline services..."
+
+# Start Redis if available
+if command -v systemctl &>/dev/null; then
+  if ! systemctl is-active --quiet redis-server; then
+      echo "Starting Redis..."
+      sudo systemctl start redis-server || true
+  else
+      echo "Redis already running"
+  fi
+fi
+
+# Start Postgres + GoClaw
+set +e
+docker compose -f "$COMPOSE_FILE" up -d
+compose_up_exit=$?
+set -e
+
+if [ $compose_up_exit -ne 0 ]; then
+  echo "docker compose up failed (code $compose_up_exit). Checking container status..."
+  docker ps --all --filter 'name=goclaw-pipeline'
+  echo "Tailing last 100 lines of goclaw logs..."
+  docker logs --tail=100 goclaw-pipeline 2>&1 || true
+  exit $compose_up_exit
+fi
+
+# Auto-migrate database inside container
+echo "Running GoClaw DB migrations..."
+if ! docker compose -f "$COMPOSE_FILE" exec -T goclaw goclaw upgrade --status >/dev/null 2>&1; then
+  echo "Schema dirty or mismatched. Forcing baseline to 0 and re-upgrading..."
+  docker compose -f "$COMPOSE_FILE" exec -T goclaw goclaw migrate force 0 || true
+fi
+
+docker compose -f "$COMPOSE_FILE" exec -T goclaw goclaw upgrade || {
+  echo "Upgrade failed. Showing container logs:"
+  docker logs --tail=200 goclaw-pipeline || true
+  exit 1
+}
 
 # Show status
 echo ""
 echo "=========================================="
 echo "Pipeline Services Status"
 echo "=========================================="
-echo "Redis: $(systemctl is-active redis-server)"
+if command -v systemctl &>/dev/null; then
+  echo "Redis: $(systemctl is-active redis-server)"
+fi
 echo "GoClaw: $(docker ps --filter 'name=goclaw-pipeline' --format '{{.Status}}')"
 echo ""
 echo "GoClaw Dashboard: http://localhost:18789"
