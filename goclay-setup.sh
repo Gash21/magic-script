@@ -200,6 +200,12 @@ install_claude_code() {
 install_happy_coder() {
     log_step "Installing Happy-Coder CLI..."
 
+    # Allow skipping via env
+    if [[ "${HAPPY_INSTALL:-auto}" == "skip" ]]; then
+        log_warn "Skipping Happy-Coder installation (HAPPY_INSTALL=skip)"
+        return 0
+    fi
+
     # Ensure Node.js is available
     export PATH="/root/.local/share/fnm:$PATH"
     # Use timeout to prevent hanging if fnm use stalls
@@ -208,11 +214,11 @@ install_happy_coder() {
         eval "$(fnm env --shell=bash)" 2>/dev/null || true
     }
 
-    # Check if already installed
-    if command -v happy &>/dev/null; then
-        local happy_version
-        happy_version="$(happy --version 2>/dev/null || echo 'unknown')"
-        log_info "Happy-Coder already installed: ${happy_version}"
+    # Check if already installed (binary or npm package), avoid invoking 'happy'
+    GLOBAL_NPM_BIN="$(npm bin -g 2>/dev/null || true)"
+    [[ -n "$GLOBAL_NPM_BIN" ]] && export PATH="$GLOBAL_NPM_BIN:$PATH"
+    if command -v happy &>/dev/null || npm ls -g --depth=0 happy-coder >/dev/null 2>&1; then
+        log_info "Happy-Coder already installed (skipping)"
         return 0
     fi
 
