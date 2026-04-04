@@ -10,10 +10,16 @@ COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.goclaw.yml"
 # Remove obsolete compose 'version' key if present (Compose v2 ignores it)
 sed -i.bak '/^version:/d' "$COMPOSE_FILE" 2>/dev/null || true
 
+# Ensure .env exists
+if [[ ! -f "${PROJECT_ROOT}/.env" ]]; then
+  echo "Error: ${PROJECT_ROOT}/.env not found.\nCreate it with: cp .env.example .env" >&2
+  exit 1
+fi
+
 echo "Starting pipeline services..."
 
 # 1) Start only Postgres first
-echo "Starting PostgreSQL..."
+echo "Starting PostgreSQL..."}
 docker compose -f "$COMPOSE_FILE" up -d postgres
 
 # 2) Wait for Postgres to be healthy (max ~60s)
@@ -37,15 +43,15 @@ done
 set +e
 
 echo "Checking GoClaw DB schema status..."
-docker compose -f "$COMPOSE_FILE" run --rm --no-deps goclaw goclaw upgrade --status
+docker compose -f "$COMPOSE_FILE" run --rm --no-deps --env-file "${PROJECT_ROOT}/.env" goclaw goclaw upgrade --status
 status_exit=$?
 set -e
 
 if [[ $status_exit -ne 0 ]]; then
   echo "Schema dirty/mismatched. Forcing baseline to 0 and upgrading..."
   # Force baseline and upgrade, using ephemeral runs
-  docker compose -f "$COMPOSE_FILE" run --rm --no-deps goclaw goclaw migrate force 0 || true
-  docker compose -f "$COMPOSE_FILE" run --rm --no-deps goclaw goclaw upgrade
+  docker compose -f "$COMPOSE_FILE" run --rm --no-deps --env-file "${PROJECT_ROOT}/.env" goclaw goclaw migrate force 0 || true
+  docker compose -f "$COMPOSE_FILE" run --rm --no-deps --env-file "${PROJECT_ROOT}/.env" goclaw goclaw upgrade
 fi
 
 # 4) Start GoClaw service
