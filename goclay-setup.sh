@@ -225,9 +225,9 @@ install_happy_coder() {
         return 0
     fi
 
-    # Install Happy-Coder with timeout
+    # Install Happy-Coder with timeout (non-interactive)
     log_info "Installing Happy-Coder (this may take a minute)..."
-    if timeout 300 npm install -g happy-coder --silent --no-audit --no-fund 2>&1; then
+    if CI=true timeout 300 npm install -g happy-coder --silent --no-audit --no-fund --yes --prefer-offline 2>&1; then
         # Verify installation
         if command -v happy &>/dev/null; then
             log_info "Happy-Coder installed: $(happy --version)"
@@ -281,9 +281,9 @@ install_openai_codex() {
         return 0
     fi
 
-    # Install OpenAI Codex with timeout
+    # Install OpenAI Codex with timeout (non-interactive)
     log_info "Installing OpenAI Codex (this may take a minute)..."
-    if timeout 300 npm install -g @openai/codex --silent --no-audit --no-fund 2>&1; then
+    if CI=true timeout 300 npm install -g @openai/codex --silent --no-audit --no-fund --yes --prefer-offline 2>&1; then
         # Verify installation
         if command -v codex &>/dev/null; then
             log_info "OpenAI Codex CLI installed: $(codex --version)"
