@@ -17,7 +17,7 @@ readonly GOCLAW_PORT="18789"
 readonly TARGET_USER="${SUDO_USER:-$USER}"
 readonly USER_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 readonly USERNAME="$TARGET_USER"
-readonly FNM_DIR="${USER_HOME}/.local/share/fnm"
+FNM_DIR="${USER_HOME}/.local/share/fnm"
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly PROJECT_ROOT="$SCRIPT_DIR"
 
