@@ -43,15 +43,15 @@ done
 set +e
 
 echo "Checking GoClaw DB schema status..."
-docker compose -f "$COMPOSE_FILE" run --rm --no-deps goclaw goclaw upgrade --status
+docker compose -f "$COMPOSE_FILE" run --rm --no-deps -e GOCLAW_OPENAI_API_KEY -e GOCLAW_MINIMAX_API_KEY -e GOCLAW_TELEGRAM_BOT_TOKEN -e GOCLAW_TELEGRAM_CHAT_ID -e GOCLAW_POSTGRES_DSN goclaw upgrade --status
 status_exit=$?
 set -e
 
 if [[ $status_exit -ne 0 ]]; then
   echo "Schema dirty/mismatched. Forcing baseline to 0 and upgrading..."
   # Force baseline and upgrade, using ephemeral runs
-  docker compose -f "$COMPOSE_FILE" run --rm --no-deps -e GOCLAW_OPENAI_API_KEY -e GOCLAW_MINIMAX_API_KEY -e GOCLAW_TELEGRAM_BOT_TOKEN -e GOCLAW_TELEGRAM_CHAT_ID -e GOCLAW_POSTGRES_DSN goclaw goclaw migrate force 0 || true
-  docker compose -f "$COMPOSE_FILE" run --rm --no-deps -e GOCLAW_OPENAI_API_KEY -e GOCLAW_MINIMAX_API_KEY -e GOCLAW_TELEGRAM_BOT_TOKEN -e GOCLAW_TELEGRAM_CHAT_ID -e GOCLAW_POSTGRES_DSN goclaw goclaw upgrade
+  docker compose -f "$COMPOSE_FILE" run --rm --no-deps -e GOCLAW_OPENAI_API_KEY -e GOCLAW_MINIMAX_API_KEY -e GOCLAW_TELEGRAM_BOT_TOKEN -e GOCLAW_TELEGRAM_CHAT_ID -e GOCLAW_POSTGRES_DSN goclaw migrate force 0 || true
+  docker compose -f "$COMPOSE_FILE" run --rm --no-deps -e GOCLAW_OPENAI_API_KEY -e GOCLAW_MINIMAX_API_KEY -e GOCLAW_TELEGRAM_BOT_TOKEN -e GOCLAW_TELEGRAM_CHAT_ID -e GOCLAW_POSTGRES_DSN goclaw upgrade
 fi
 
 # 4) Start GoClaw service
