@@ -330,6 +330,24 @@ install_goclaw() {
         cat > "$compose_file" << 'EOF'
 version: '3.8'
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: goclaw-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=goclaw
+      - POSTGRES_USER=goclaw
+      - POSTGRES_PASSWORD=goclaw_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U goclaw"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   goclaw:
     image: ghcr.io/nextlevelbuilder/goclaw:full
     container_name: goclaw-pipeline
@@ -345,8 +363,15 @@ services:
       - GOCLAW_MINIMAX_API_KEY=${MINIMAX_API_KEY}
       - GOCLAW_TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - GOCLAW_TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - GOCLAW_POSTGRES_DSN=postgres://goclaw:goclaw_password@postgres:5432/goclaw?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
     env_file:
       - .env
+
+volumes:
+  postgres_data:
 EOF
         log_info "Docker Compose file created: ${compose_file}"
     else
@@ -829,6 +854,7 @@ GITHUB_REPO=              # e.g. username/repo-name
 # === INFRASTRUCTURE ===
 REDIS_URL=redis://localhost:6379
 GOCLAW_PORT=18789
+GOCLAW_POSTGRES_DSN=postgres://goclaw:goclaw_password@localhost:5432/goclaw?sslmode=disable
 
 # === PIPELINE CONFIG ===
 MAX_SPRINT_HOURS=4
