@@ -328,6 +328,40 @@ install_docker() {
 }
 
 #-------------------------------------------------------------------------------
+# 9b. Tailscale VPN Installation
+#-------------------------------------------------------------------------------
+install_tailscale() {
+    log_step "Installing Tailscale..."
+
+    if command -v tailscale &>/dev/null; then
+        log_warn "Tailscale already installed - skipping install"
+    else
+        curl -fsSL https://tailscale.com/install.sh | sh
+    fi
+
+    if [[ ! -c /dev/net/tun ]]; then
+        log_warn "/dev/net/tun is not present - this is required for tailscaled"
+        log_warn "In a Proxmox LXC container, enable it on the HOST with:"
+        log_warn "  pct set <CTID> -features nesting=1,keyctl=1"
+        log_warn "  echo 'lxc.cgroup2.devices.allow: c 10:200 rwm' >> /etc/pve/lxc/<CTID>.conf"
+        log_warn "  echo 'lxc.mount.entry: /dev/net dev/net none bind,create=dir' >> /etc/pve/lxc/<CTID>.conf"
+        log_warn "Then restart the container and re-run: systemctl enable --now tailscaled"
+        return 0
+    fi
+
+    systemctl enable tailscaled --quiet 2>/dev/null || true
+    systemctl start tailscaled 2>/dev/null || true
+
+    sleep 1
+    if systemctl is-active --quiet tailscaled; then
+        log_info "✓ Tailscale daemon is running"
+    else
+        log_error "✗ tailscaled failed to start - check: systemctl status tailscaled"
+        log_warn "Common cause in Proxmox LXC: missing /dev/net/tun passthrough on the host"
+    fi
+}
+
+#-------------------------------------------------------------------------------
 # 10. Docker Log Rotation (Storage Protection)
 #-------------------------------------------------------------------------------
 configure_docker_logging() {
@@ -593,6 +627,7 @@ print_summary() {
     echo "User:       $USERNAME"
     echo "Shell:      /bin/zsh (Oh My Zsh)"
     echo "Docker:     Installed with ${DOCKER_LOG_MAX_SIZE} log rotation"
+    echo "Tailscale:  Installed (requires authentication)"
     echo "GitHub CLI: Installed (gh)"
     echo "Firewall:   UFW (SSH, HTTP, HTTPS, Docker allowed)"
     echo "Fail2ban:   Enabled (3 retries, 1hr ban)"
@@ -622,6 +657,7 @@ main() {
     configure_sudo
     setup_ssh_keys
     install_docker
+    install_tailscale
     configure_docker_logging
     install_github_cli
     install_oh_my_zsh
